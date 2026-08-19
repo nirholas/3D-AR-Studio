@@ -312,6 +312,13 @@ export function studioStyles() {
 @media (max-width: 420px) {
 	.ars-title { display: none; }
 	.ars-item-list { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); }
+	/* A phone this narrow cannot fit the prompt beside four controls without
+	   squeezing it down to two visible characters. Give it its own row. */
+	.ars-dock { flex-wrap: wrap; row-gap: 10px; }
+	.ars-forge-form { order: -1; flex: 1 0 100%; }
+	.ars-dock .ars-icon-btn { flex: 0 0 auto; }
+	.ars-status { bottom: calc(env(safe-area-inset-bottom, 0px) + 152px); }
+	.ars-selbar { bottom: calc(env(safe-area-inset-bottom, 0px) + 100px); }
 }
 `;
 }
