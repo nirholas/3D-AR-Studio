@@ -178,17 +178,10 @@ export function studioStyles() {
 	max-width: 26vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .ars-selbar .ars-icon-btn { border-radius: 999px; padding: 7px 11px; font-size: 12.5px; background: rgba(255, 255, 255, 0.06); }
-/* Placing a model in the real room is the whole point of the product, so when
-   the device can do it that button reads as the primary action, not one more
-   icon in a row of them. */
-.ars-selbar .ars-sel-ar {
-	background: var(--ars-accent); border-color: var(--ars-accent); color: #0d0b1e; font-weight: 700;
-}
-.ars-selbar .ars-sel-ar:hover { filter: brightness(1.08); background: var(--ars-accent); }
-.ars-selbar .ars-sel-ar[aria-busy="true"] { opacity: 0.7; cursor: progress; }
-@media (max-width: 560px) {
-	.ars-sel-ar-label { display: none; }
-}
+/* The AR control lives in the top bar and already acts on the selected model, so
+   the selection toolbar stays icon-sized edit actions. Duplicating it here
+   collapsed to an unlabelled dot on a narrow phone. */
+.ars-top .ars-icon-btn[aria-busy="true"] { opacity: 0.7; cursor: progress; }
 
 /* ── Bottom dock ── */
 .ars-dock {

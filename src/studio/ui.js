@@ -125,10 +125,6 @@ export function buildUI(host, cfg) {
 	const selName = el('span', { class: 'ars-sel-name' });
 	const selbar = el('div', { class: 'ars-selbar', hidden: true, role: 'toolbar', 'aria-label': 'Selected model' }, [
 		selName,
-		el('button', {
-			type: 'button', class: 'ars-icon-btn ars-sel-ar', 'data-act': 'native-ar', hidden: true,
-			'aria-label': 'Place the selected model in your real space using your device AR viewer',
-		}, [el('span', { 'aria-hidden': 'true', text: '⬢' }), el('span', { class: 'ars-sel-ar-label', text: 'Place in your space' })]),
 		el('button', { type: 'button', class: 'ars-icon-btn', 'data-act': 'rotate', 'aria-label': 'Rotate the selected model' }, [el('span', { 'aria-hidden': 'true', text: '⟳' })]),
 		el('button', { type: 'button', class: 'ars-icon-btn', 'data-act': 'duplicate', 'aria-label': 'Duplicate the selected model' }, [el('span', { 'aria-hidden': 'true', text: '⧉' })]),
 		el('button', { type: 'button', class: 'ars-icon-btn', 'data-act': 'remove', 'aria-label': 'Remove the selected model' }, [el('span', { 'aria-hidden': 'true', text: '✕' })]),
@@ -221,7 +217,6 @@ export function buildUI(host, cfg) {
 		forgeForm: canGenerate ? forgeForm : null, forgeInput: canGenerate ? forgeInput : null, forgeGo: canGenerate ? forgeGo : null,
 		empty, emptyCamera, emptyAdd, emptyForge,
 		selbar, selName,
-		selArBtn: selbar.querySelector('.ars-sel-ar'),
 		tray, trayTabs, trayBody, trayClose,
 		qrModal, qrBox, qrLink, qrClose,
 		roomModal, roomIdle, roomLive, roomCreate, roomJoinForm, roomJoinInput,

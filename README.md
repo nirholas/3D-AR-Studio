@@ -335,9 +335,8 @@ A session looks like this:
 | Desktop | Preview | Grid floor, drag-look, QR hand-off to a phone. |
 | Headsets | WebXR | Same as Android Chrome. |
 
-The **AR** button in the top bar always takes the best path the device has, and labels itself
-so it never promises the wrong one. On a phone without WebXR, each selected model also gets a
-**Place in your space** button that opens the native viewer directly.
+The **AR** button in the top bar always takes the best path the device has, labels itself so it
+never promises the wrong one, and acts on the selected model (or the last one placed).
 
 Camera and WebXR both need a secure context: `https://` or `localhost`.
 

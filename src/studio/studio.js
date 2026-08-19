@@ -365,7 +365,6 @@ export class ArStudio {
 				if (label) label.textContent = 'Place in your space';
 				btn.setAttribute('aria-label', 'Open this in your device AR viewer and place it in your real space');
 			}
-			if (this.ui.selArBtn) this.ui.selArBtn.hidden = cap === 'webxr';
 		});
 		// Desktop leads with the QR hand-off; a phone is already the target device.
 		const coarse = window.matchMedia?.('(pointer: coarse)').matches;
@@ -460,7 +459,6 @@ export class ArStudio {
 			return;
 		}
 		selbar.hidden = false;
-		if (this.ui.selArBtn) this.ui.selArBtn.hidden = this.arMode === 'webxr' || this.arMode === 'none';
 		if (selName) selName.textContent = p.title || 'Model';
 		this.selRing.visible = !this.xrSession;
 		this._positionSelRing();
@@ -707,10 +705,6 @@ export class ArStudio {
 		const p = this.selected;
 		if (!btn || !p) return;
 		const act = btn.dataset.act;
-		if (act === 'native-ar') {
-			this._placeNative(p);
-			return;
-		}
 		if ((act === 'rotate' || act === 'remove') && !this._isMine(p)) {
 			this._setStatus('That model belongs to someone else in the room.', { warn: true });
 			return;
@@ -1481,7 +1475,7 @@ export class ArStudio {
 		}
 		if (this._nativeArBusy) return null;
 		this._nativeArBusy = true;
-		const btn = this.ui.selArBtn;
+		const btn = this.ui.xrBtn;
 		btn?.setAttribute('aria-busy', 'true');
 
 		const STAGES = {

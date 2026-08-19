@@ -8,9 +8,8 @@
   occlusion. The GLB is converted to USDZ on the device (a real conversion via three.js's
   `USDZExporter`, about a second for a typical prop), so no server and no pre-baked USDZ is
   needed. Android without WebXR opens Scene Viewer.
-- The **AR** button now resolves the device's best path at boot and labels itself for what it
-  will actually do, and each selected model gets a **Place in your space** action on phones
-  without WebXR.
+- The **AR** button now resolves the device's best path at boot, labels itself for what it will
+  actually do, and acts on the selected model.
 - New API: `studio.enterAR()`, `studio.placeInYourSpace()`, `studio.arMode`, the `native-ar` and
   `native-ar-error` events, and the exported `arCapability()`, `placeInYourSpace()`,
   `glbUrlToUsdzBlob()` and `withQuickLookBanner()` helpers.
