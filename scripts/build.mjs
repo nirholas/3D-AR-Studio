@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const pkg = JSON.parse(await readFile(resolve(root, 'package.json'), 'utf8'));
 
-const banner = `/*! ${pkg.name} v${pkg.version}: ${pkg.homepage}
+const banner = `/*! ${pkg.name} v${pkg.version} · ${pkg.homepage}
  * ${pkg.license} licensed. Bundles three.js (MIT) and colyseus.js (MIT). */`;
 
 await mkdir(resolve(root, 'dist'), { recursive: true });

@@ -87,6 +87,10 @@ you the three manual steps instead of failing silently.
 
 Templates: `static` (one HTML file, no build), `vite`, `react`.
 
+Both `3d-ar-studio` and `ar-studio` run the CLI. The MCP server is a separate
+binary in its own package, so `npx 3d-ar-studio-mcp` resolves cleanly: see
+[MCP server](#mcp-server).
+
 ---
 
 ## Your own models

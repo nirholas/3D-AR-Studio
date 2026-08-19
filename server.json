@@ -2,20 +2,22 @@
 	"$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
 	"name": "io.github.nirholas/3d-ar-studio",
 	"title": "3D AR Studio",
-	"description": "Put 3D models in a person's real room. Generate a model from text, search a free CC0 library, arrange several into one scene, and hand back a single link that opens the whole arrangement in augmented reality on their phone.",
+	"description": "Put 3D models in someone's real room: generate, arrange, and hand back one AR link.",
 	"websiteUrl": "https://nirholas.github.io/3D-AR-Studio/",
 	"repository": {
 		"url": "https://github.com/nirholas/3D-AR-Studio",
 		"source": "github"
 	},
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"packages": [
 		{
 			"registryType": "npm",
-			"identifier": "3d-ar-studio",
-			"version": "0.1.0",
+			"identifier": "3d-ar-studio-mcp",
+			"version": "0.1.1",
 			"runtimeHint": "npx",
-			"transport": { "type": "stdio" },
+			"transport": {
+				"type": "stdio"
+			},
 			"environmentVariables": [
 				{
 					"name": "AR_STUDIO_PAGE_URL",
