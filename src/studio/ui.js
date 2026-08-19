@@ -76,8 +76,13 @@ export function buildUI(host, cfg) {
 	const qrBtn = el('button', { type: 'button', class: 'ars-icon-btn', hidden: true, 'aria-label': 'Show a QR code that opens this scene on your phone' }, [
 		el('span', { 'aria-hidden': 'true', text: '📱' }), 'Open on phone',
 	]);
-	const xrBtn = el('button', { type: 'button', class: 'ars-icon-btn', hidden: true, 'aria-pressed': 'false', 'aria-label': 'Enter immersive augmented reality and place models on real surfaces' }, [
-		el('span', { 'aria-hidden': 'true', text: '✦' }), 'Immersive AR',
+	// One AR button that always does the best thing this device can do: an
+	// immersive WebXR session where that exists, otherwise the device's own AR
+	// viewer (Quick Look / Scene Viewer). The label is set at boot, once the
+	// capability is known, so it never promises the wrong experience.
+	const xrBtn = el('button', { type: 'button', class: 'ars-icon-btn', hidden: true, 'aria-pressed': 'false', 'aria-label': 'View this in augmented reality' }, [
+		el('span', { 'aria-hidden': 'true', text: '✦' }),
+		el('span', { class: 'ars-ar-label', text: 'AR' }),
 	]);
 	const cameraBtn = el('button', { type: 'button', class: 'ars-icon-btn', 'aria-pressed': 'false', 'aria-label': 'Turn the camera on to see your models in the room' }, [
 		el('span', { 'aria-hidden': 'true', text: '📷' }), 'Camera',
@@ -120,6 +125,10 @@ export function buildUI(host, cfg) {
 	const selName = el('span', { class: 'ars-sel-name' });
 	const selbar = el('div', { class: 'ars-selbar', hidden: true, role: 'toolbar', 'aria-label': 'Selected model' }, [
 		selName,
+		el('button', {
+			type: 'button', class: 'ars-icon-btn ars-sel-ar', 'data-act': 'native-ar', hidden: true,
+			'aria-label': 'Place the selected model in your real space using your device AR viewer',
+		}, [el('span', { 'aria-hidden': 'true', text: '⬢' }), el('span', { class: 'ars-sel-ar-label', text: 'Place in your space' })]),
 		el('button', { type: 'button', class: 'ars-icon-btn', 'data-act': 'rotate', 'aria-label': 'Rotate the selected model' }, [el('span', { 'aria-hidden': 'true', text: '⟳' })]),
 		el('button', { type: 'button', class: 'ars-icon-btn', 'data-act': 'duplicate', 'aria-label': 'Duplicate the selected model' }, [el('span', { 'aria-hidden': 'true', text: '⧉' })]),
 		el('button', { type: 'button', class: 'ars-icon-btn', 'data-act': 'remove', 'aria-label': 'Remove the selected model' }, [el('span', { 'aria-hidden': 'true', text: '✕' })]),
@@ -212,6 +221,7 @@ export function buildUI(host, cfg) {
 		forgeForm: canGenerate ? forgeForm : null, forgeInput: canGenerate ? forgeInput : null, forgeGo: canGenerate ? forgeGo : null,
 		empty, emptyCamera, emptyAdd, emptyForge,
 		selbar, selName,
+		selArBtn: selbar.querySelector('.ars-sel-ar'),
 		tray, trayTabs, trayBody, trayClose,
 		qrModal, qrBox, qrLink, qrClose,
 		roomModal, roomIdle, roomLive, roomCreate, roomJoinForm, roomJoinInput,

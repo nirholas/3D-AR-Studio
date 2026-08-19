@@ -98,7 +98,8 @@ export interface StudioOptions {
 export type StudioEventName =
 	| 'add' | 'remove' | 'select' | 'clear'
 	| 'generate' | 'generate-error'
-	| 'camera' | 'xr' | 'room' | 'share';
+	| 'camera' | 'xr' | 'room' | 'share'
+	| 'native-ar' | 'native-ar-error';
 
 export interface GeneratedModel {
 	src: string;
@@ -128,6 +129,11 @@ export declare class ArStudio {
 	startCamera(): Promise<void>;
 	stopCamera(): void;
 	toggleImmersive(): Promise<void>;
+	/** Enter AR by the best path this device supports. */
+	enterAR(): Promise<unknown>;
+	/** Open one model in the device's native AR viewer. Defaults to the selection. */
+	placeInYourSpace(placement?: unknown): Promise<'quicklook' | 'sceneviewer' | 'none' | null>;
+	readonly arMode: ArCapability;
 	openRoom(code?: string): Promise<string>;
 	leaveRoom(): void;
 	destroy(): void;
@@ -207,6 +213,21 @@ export declare function detectArTarget(userAgent?: string): ArTarget;
 export declare function buildArLaunchUrl(origin: string, glbUrl: string, title?: string, opts?: { live?: boolean; endpoint?: string }): string;
 export declare function buildSceneViewerUrl(glbUrl: string, opts?: { title?: string; fallbackUrl?: string }): string;
 export declare function buildViewerUrl(origin: string, glbUrl: string, title?: string): string;
+export type ArCapability = 'webxr' | 'quicklook' | 'sceneviewer' | 'none';
+/** The best AR path this device can actually deliver, best first. */
+export declare function arCapability(): Promise<ArCapability>;
+/** Open one model in the device's own AR viewer (Quick Look / Scene Viewer). */
+export declare function placeInYourSpace(
+	model: { src: string; title?: string; usdz?: string },
+	opts?: { onProgress?: (stage: 'download' | 'parse' | 'convert' | 'open') => void; fallbackUrl?: string; signal?: AbortSignal },
+): Promise<'quicklook' | 'sceneviewer' | 'none'>;
+export declare function withQuickLookBanner(url: string, fields?: { title?: string; subtitle?: string; callToAction?: string }): string;
+/** Fetch a GLB and convert it to a USDZ blob, on the device. */
+export declare function glbUrlToUsdzBlob(glbUrl: string, opts?: { signal?: AbortSignal; onProgress?: (stage: string) => void }): Promise<Blob>;
+export declare function sceneToUsdzBlob(scene: any): Promise<Blob>;
+export declare function bakeSkinnedMeshes(scene: any): void;
+export declare function coerceMaterialsToStandard(scene: any): void;
+export declare function ensureNormals(scene: any): void;
 export declare function canUseQuickLook(): boolean;
 export declare function canUseSceneViewer(): boolean;
 export declare function openQuickLook(usdzUrl: string, opts?: { onBannerTap?: () => void }): void;

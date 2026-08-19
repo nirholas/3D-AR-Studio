@@ -99,7 +99,64 @@ try {
 	const cleared = await page.evaluate(() => document.querySelector('ar-studio').studio.placements.length);
 	step('clearing empties the scene', cleared === 0);
 
+	// The iOS path converts the GLB to USDZ on the device. Headless Chromium is
+	// not iOS, but the conversion is the hard part and it runs identically here,
+	// so this proves the bytes Quick Look would receive are real.
+	const usdz = await page.evaluate(async () => {
+		const mod = await import('./ar-studio.min.js');
+		const t0 = performance.now();
+		const blob = await mod.glbUrlToUsdzBlob('https://three.ws/cdn/objects/polyhaven/glb/adjustable_wrench.glb');
+		const head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+		const text = new TextDecoder('latin1').decode(new Uint8Array(await blob.arrayBuffer()));
+		return {
+			bytes: blob.size,
+			type: blob.type,
+			zip: head[0] === 0x50 && head[1] === 0x4b,
+			// three's exporter writes the scene as model.usda (older builds emitted
+			// .usdc); Quick Look reads either, so accept both rather than pinning
+			// this check to one version of the exporter.
+			hasUsd: /\.usd[ac]\b/.test(text),
+			entries: (text.match(/\.(usd[ac]|png|jpg)/g) || []).slice(0, 4).join(' '),
+			ms: Math.round(performance.now() - t0),
+		};
+	});
+	step('a GLB converts to real USDZ bytes on the device', usdz.zip && usdz.hasUsd && usdz.bytes > 10000,
+		`${(usdz.bytes / 1024).toFixed(0)} kB, ${usdz.type}, ${usdz.ms} ms, contains ${usdz.entries}`);
+
+	const caps = await page.evaluate(async () => {
+		const mod = await import('./ar-studio.min.js');
+		return { capability: await mod.arCapability(), banner: mod.withQuickLookBanner('blob:abc', { title: 'Crate' }) };
+	});
+	step('AR capability resolves without throwing', typeof caps.capability === 'string', caps.capability);
+	step('the Quick Look banner is attached as fragment params', caps.banner === 'blob:abc#checkoutTitle=Crate');
+
 	await page.screenshot({ path: resolve(ROOT, 'smoke.png') });
+
+	// Device routing: an iPhone must land on Quick Look and an Android phone on
+	// Scene Viewer, because neither exposes WebXR and the camera-passthrough
+	// approximation is not what either of those users should get.
+	for (const [device, ua, want] of [
+		['iPhone', 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1', 'quicklook'],
+		['Android', 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36', 'sceneviewer'],
+	]) {
+		const ctx = await browser.newContext({ userAgent: ua, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+		const p2 = await ctx.newPage();
+		await p2.goto(`http://localhost:${PORT}/studio.html`, { waitUntil: 'networkidle' });
+		await p2.waitForTimeout(1200);
+		const got = await p2.evaluate(async () => {
+			const mod = await import('./ar-studio.min.js');
+			const studio = document.querySelector('ar-studio').studio;
+			return {
+				capability: await mod.arCapability(),
+				mode: studio.arMode,
+				buttonShown: !document.querySelector('.ars-ar-label')?.closest('button')?.hidden,
+				label: document.querySelector('.ars-ar-label')?.textContent,
+			};
+		});
+		step(`${device} routes to its native AR viewer`, got.capability === want, `${got.capability}, button "${got.label}"`);
+		step(`${device} is offered the AR button`, got.buttonShown === true);
+		await ctx.close();
+	}
 } catch (err) {
 	step('run completed', false, err.message);
 }

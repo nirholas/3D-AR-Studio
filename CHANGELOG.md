@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.0
+
+- **Real ARKit and ARCore placement, not a camera-passthrough approximation.** An iPhone has no
+  WebXR, and until now it fell back to compositing the scene over the camera feed, which floats
+  rather than sticks. It now opens Apple's AR Quick Look: real plane detection, real scale, real
+  occlusion. The GLB is converted to USDZ on the device (a real conversion via three.js's
+  `USDZExporter`, about a second for a typical prop), so no server and no pre-baked USDZ is
+  needed. Android without WebXR opens Scene Viewer.
+- The **AR** button now resolves the device's best path at boot and labels itself for what it
+  will actually do, and each selected model gets a **Place in your space** action on phones
+  without WebXR.
+- New API: `studio.enterAR()`, `studio.placeInYourSpace()`, `studio.arMode`, the `native-ar` and
+  `native-ar-error` events, and the exported `arCapability()`, `placeInYourSpace()`,
+  `glbUrlToUsdzBlob()` and `withQuickLookBanner()` helpers.
+
 ## 0.1.0
 
 First release.

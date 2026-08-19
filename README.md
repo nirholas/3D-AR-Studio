@@ -30,9 +30,11 @@ ends the session. This one keeps the whole scene in your page:
   generation runs behind the live view and the finished model drops into the room.
 - **Real WebXR where it exists.** An always-armed hit-test reticle, one `XRAnchor` per placed
   model, real-world light estimation, and depth occlusion so models hide behind your furniture.
-- **A designed path on every other device.** Camera passthrough with gyro world-lock and
-  room-light matching on iOS, a grid preview with a QR hand-off on desktop, plus Quick Look and
-  Scene Viewer for single models.
+- **Real ARKit and ARCore everywhere else.** iPhones have no WebXR, so an iPhone gets Apple's
+  AR Quick Look instead: true plane detection, true scale, true occlusion. The GLB is converted
+  to USDZ on the device (a real conversion via three.js's `USDZExporter`, about a second for a
+  typical prop, no server involved). Android without WebXR gets Scene Viewer. Desktop gets a
+  grid preview and a QR hand-off to a phone.
 - **Scenes are links.** Models, positions, rotations and scales round-trip through the URL.
   Compose on a laptop, scan the QR, it reopens exactly on your phone.
 - **Build together, live.** Open a room, share a six-character code, and every add and move
@@ -208,9 +210,11 @@ studio.getScene()                            // [{ src, title, x, z, yaw, scale 
 await studio.setScene(items)                 // replace the arrangement
 studio.shareUrl()                            // a link that reopens it exactly
 await studio.generate('a brass desk lamp')   // text to 3D, into the room
-studio.viewInYourSpace(src, title)           // hand one model to Quick Look / Scene Viewer
+studio.viewInYourSpace(src, title)           // open the hosted launch page for one model
 await studio.startCamera()                   // needs a user gesture on iOS
-await studio.toggleImmersive()               // enter or leave WebXR
+await studio.enterAR()                       // best AR path for this device
+await studio.placeInYourSpace()              // native viewer (Quick Look / Scene Viewer)
+await studio.toggleImmersive()               // enter or leave WebXR specifically
 await studio.openRoom()                      // returns the room code
 studio.destroy()                             // releases camera, socket and GPU context
 ```
@@ -230,6 +234,8 @@ studio.destroy()                             // releases camera, socket and GPU 
 | `generate-error` | `{ error, prompt }` |
 | `camera` | `{ active }` |
 | `xr` | `{ active }` |
+| `native-ar` | `{ src, title, viewer }` where viewer is `quicklook`, `sceneviewer` or `none` |
+| `native-ar-error` | `{ error, src }` |
 | `room` | `{ status, code }` |
 | `share` | `{ url }` |
 
@@ -323,10 +329,15 @@ A session looks like this:
 
 | Device | Path | What you get |
 | --- | --- | --- |
-| Android Chrome | WebXR `immersive-ar` | Hit-test placement, per-model anchors, light estimation, depth occlusion. |
-| iOS Safari | Camera passthrough | Live camera behind the scene, gyro world-lock, room-light matching, plus Quick Look for a single model. |
+| Android Chrome | WebXR `immersive-ar` | The whole scene in the room: hit-test placement, per-model anchors, light estimation, depth occlusion. |
+| iOS Safari | AR Quick Look | One model at a time in Apple's own viewer, with real ARKit tracking, scale and occlusion. The GLB is converted to USDZ on the device. Camera passthrough with gyro world-lock composes the multi-model scene in-page alongside it. |
+| Android without WebXR | Scene Viewer | One model at a time through ARCore, with a browser fallback if ARCore is missing. |
 | Desktop | Preview | Grid floor, drag-look, QR hand-off to a phone. |
 | Headsets | WebXR | Same as Android Chrome. |
+
+The **AR** button in the top bar always takes the best path the device has, and labels itself
+so it never promises the wrong one. On a phone without WebXR, each selected model also gets a
+**Place in your space** button that opens the native viewer directly.
 
 Camera and WebXR both need a secure context: `https://` or `localhost`.
 
@@ -339,7 +350,7 @@ npm install
 npm test                 # 55 unit tests, no browser needed
 npm run build            # dist/ bundles
 npm run build:site       # docs/ (the GitHub Pages site)
-npm run test:browser     # end-to-end in a real browser (needs Playwright)
+npm run test:browser     # 18 end-to-end checks in a real browser (needs Playwright)
 npm run inspect          # MCP Inspector against the local server
 ```
 

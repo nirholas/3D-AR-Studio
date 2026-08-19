@@ -46,6 +46,7 @@ import { createLoadQueue } from './load-queue.js';
 import { sharedGLTFLoader } from './loaders.js';
 import { mountIdle } from './idle.js';
 import { captureComposite, shareOrDownload, shareUrlOrCopy } from './capture.js';
+import { arCapability, placeInYourSpace } from './native-ar.js';
 import { deriveVerticalFovDeg, DEFAULT_DIAG_FOV_DEG } from './camera-fov.js';
 import { clampPitch, isFiniteReading, resolveLockYaw, screenPitchDeg } from './sensor-fusion.js';
 import {
@@ -191,6 +192,9 @@ export class ArStudio {
 		this.arTransitioning = false;
 		this.xrSession = null;
 		this.estimatedLight = null;
+		/** 'webxr' | 'quicklook' | 'sceneviewer' | 'none', resolved at boot. */
+		this.arMode = 'none';
+		this._nativeArBusy = false;
 		this.arTrackW = 0;
 		this.arTrackH = 0;
 
@@ -266,7 +270,7 @@ export class ArStudio {
 			u.cameraBtn.title = 'This browser cannot open a camera';
 		}
 
-		bind(u.xrBtn, 'click', () => this._toggleXR());
+		bind(u.xrBtn, 'click', () => this._enterAR());
 		bind(u.addBtn, 'click', () => (u.tray.hidden ? this._openTray() : this._closeTray()));
 		bind(u.trayClose, 'click', () => this._closeTray());
 		bind(u.tray, 'click', (e) => { if (e.target === u.tray) this._closeTray(); });
@@ -344,8 +348,24 @@ export class ArStudio {
 		this._updateRoomButton();
 		this._startLoop();
 
-		MultiPlaceSession.isSupported().then((ok) => {
-			if (ok && this.ui.xrBtn) this.ui.xrBtn.hidden = false;
+		// One AR button, labelled for what this device will actually do. An iPhone
+		// has no WebXR, but it has ARKit through Quick Look, and offering it the
+		// camera-passthrough approximation instead would be strictly worse: the
+		// native viewer gets real plane detection, real scale and real occlusion.
+		arCapability().then((cap) => {
+			this.arMode = cap;
+			const btn = this.ui.xrBtn;
+			if (!btn || cap === 'none') return;
+			btn.hidden = false;
+			const label = btn.querySelector('.ars-ar-label');
+			if (cap === 'webxr') {
+				if (label) label.textContent = 'Immersive AR';
+				btn.setAttribute('aria-label', 'Enter immersive augmented reality and place models on real surfaces');
+			} else {
+				if (label) label.textContent = 'Place in your space';
+				btn.setAttribute('aria-label', 'Open this in your device AR viewer and place it in your real space');
+			}
+			if (this.ui.selArBtn) this.ui.selArBtn.hidden = cap === 'webxr';
 		});
 		// Desktop leads with the QR hand-off; a phone is already the target device.
 		const coarse = window.matchMedia?.('(pointer: coarse)').matches;
@@ -440,6 +460,7 @@ export class ArStudio {
 			return;
 		}
 		selbar.hidden = false;
+		if (this.ui.selArBtn) this.ui.selArBtn.hidden = this.arMode === 'webxr' || this.arMode === 'none';
 		if (selName) selName.textContent = p.title || 'Model';
 		this.selRing.visible = !this.xrSession;
 		this._positionSelRing();
@@ -686,6 +707,10 @@ export class ArStudio {
 		const p = this.selected;
 		if (!btn || !p) return;
 		const act = btn.dataset.act;
+		if (act === 'native-ar') {
+			this._placeNative(p);
+			return;
+		}
 		if ((act === 'rotate' || act === 'remove') && !this._isMine(p)) {
 			this._setStatus('That model belongs to someone else in the room.', { warn: true });
 			return;
@@ -1423,6 +1448,79 @@ export class ArStudio {
 		}
 	}
 
+	// ── Entering AR ───────────────────────────────────────────────────────────
+
+	/**
+	 * Take this device into AR by its best available path. WebXR keeps the whole
+	 * scene in the page; everything else hands one model to the platform's own AR
+	 * viewer, which is the only way to get real ARKit / ARCore placement there.
+	 */
+	_enterAR() {
+		if (this.arMode === 'webxr') return this._toggleXR();
+		if (this.arMode === 'none') {
+			this._setStatus('This device has no AR viewer. Open this scene on a phone to place it in a room.', {
+				warn: true, actionLabel: 'Show QR', onAction: () => this._openQr(),
+			});
+			return Promise.resolve();
+		}
+		return this._placeNative();
+	}
+
+	/**
+	 * Open one model in the device's native AR viewer. On iOS the GLB is
+	 * converted to USDZ on the device first, which is why this reports progress:
+	 * a couple of silent seconds after a tap reads as a dead button.
+	 *
+	 * @param {object} [placement] Defaults to the selected model, then the last one.
+	 */
+	async _placeNative(placement) {
+		const target = placement || this.selected || this.placements[this.placements.length - 1];
+		if (!target) {
+			this._setStatus('Add a model first, then place it in your space.', { warn: true });
+			return null;
+		}
+		if (this._nativeArBusy) return null;
+		this._nativeArBusy = true;
+		const btn = this.ui.selArBtn;
+		btn?.setAttribute('aria-busy', 'true');
+
+		const STAGES = {
+			download: 'Fetching the model…',
+			parse: 'Reading the model…',
+			convert: 'Preparing it for AR…',
+			open: 'Opening AR…',
+		};
+		this._setStatus(STAGES.download, { sticky: true });
+		try {
+			const opened = await placeInYourSpace(
+				{ src: target.src, title: target.title },
+				{
+					onProgress: (stage) => this._setStatus(STAGES[stage] || 'Preparing AR…', { sticky: true }),
+					fallbackUrl: this.config.shareBaseUrl,
+				},
+			);
+			if (opened === 'none') {
+				this._setStatus('This device has no AR viewer. Open this scene on a phone instead.', {
+					warn: true, actionLabel: 'Show QR', onAction: () => this._openQr(),
+				});
+			} else {
+				this._setStatus('Point at the floor, then drag to place it.');
+			}
+			this._emit('native-ar', { src: target.src, title: target.title, viewer: opened });
+			return opened;
+		} catch (err) {
+			log.warn('native AR failed', err);
+			this._setStatus(`Could not open AR for this model (${err?.message || err}).`, {
+				warn: true, actionLabel: 'Try again', onAction: () => this._placeNative(target),
+			});
+			this._emit('native-ar-error', { error: err, src: target.src });
+			return null;
+		} finally {
+			this._nativeArBusy = false;
+			btn?.removeAttribute('aria-busy');
+		}
+	}
+
 	// ── WebXR immersive session ───────────────────────────────────────────────
 
 	async _toggleXR() {
@@ -2081,6 +2179,19 @@ export class ArStudio {
 
 	/** Enter or leave the immersive WebXR session. */
 	toggleImmersive() { return this._toggleXR(); }
+
+	/**
+	 * Take this device into AR by its best path: the immersive session where
+	 * WebXR exists, otherwise the platform's own AR viewer.
+	 */
+	enterAR() { return this._enterAR(); }
+
+	/**
+	 * Open one model in the device's native AR viewer (Quick Look on iOS, Scene
+	 * Viewer on Android). Defaults to the selected model.
+	 * @param {object} [placement]
+	 */
+	placeInYourSpace(placement) { return this._placeNative(placement); }
 
 	/** Open a shared room (a new one when `code` is omitted). Returns the code. */
 	async openRoom(code) {

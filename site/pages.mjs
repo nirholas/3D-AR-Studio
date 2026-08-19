@@ -61,8 +61,8 @@ npx 3d-ar-studio deploy                 # push it and turn on GitHub Pages</code
 			<h3>Real WebXR, not a fallback</h3>
 			<p>An always-armed hit-test reticle, one XRAnchor per model, real-world light estimation, and depth occlusion so models hide behind your furniture.</p></div>
 		<div class="card"><span class="ico" aria-hidden="true">📱</span>
-			<h3>Every device gets its best path</h3>
-			<p>WebXR on Android, camera passthrough with gyro world-lock on iOS, a grid preview plus QR hand-off on desktop. Plus Quick Look and Scene Viewer for single models.</p></div>
+			<h3>Real ARKit on iPhone, not an approximation</h3>
+			<p>iPhones have no WebXR, so they get Apple's AR Quick Look: true plane detection, scale and occlusion. The model is converted to USDZ on the device in about a second. Android without WebXR gets Scene Viewer.</p></div>
 		<div class="card"><span class="ico" aria-hidden="true">🔗</span>
 			<h3>Scenes are links</h3>
 			<p>The whole arrangement (models, positions, rotations, scales) round-trips through the URL. Compose on a laptop, scan the QR, it reopens exactly on your phone.</p></div>
