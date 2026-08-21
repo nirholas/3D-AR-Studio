@@ -40,7 +40,7 @@ export {
 } from './ar-launch.js';
 export {
 	arCapability, prepareNativeAr, placeInYourSpace, withQuickLookBanner,
-	canUseQuickLook, canUseSceneViewer, openQuickLook, openSceneViewer,
+	canUseQuickLook, canUseSceneViewer, openQuickLook, openSceneViewer, usdzFilename,
 	cachedUsdzUrl, isQuickLookReady, releaseQuickLook, clearQuickLookCache,
 	isIOS, isAndroid, QUICK_LOOK_BANNER_TAPPED,
 } from './studio/native-ar.js';

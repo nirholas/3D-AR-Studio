@@ -360,6 +360,14 @@ your own UI on top of this package:
 > silently declines, and the button looks broken. That is the single most common reason a
 > "View in AR" button does nothing on an iPhone.
 
+There is a second trap right behind it, and it is worse because the failure looks like success:
+
+> **Safari decides whether a URL is an AR asset from its file extension.** A `blob:` URL has no
+> path, so it has no extension. Hand one to `<a rel="ar">` with no filename and Safari still
+> opens Quick Look, but as a generic 3D preview: the viewer comes up in **Object** mode with AR
+> unavailable. Setting `download="something.usdz"` on the anchor gives Safari the name it
+> sniffs, and Quick Look enters AR. `openQuickLook()` does this for you.
+
 So the package splits preparing from opening, and never does them in one tap:
 
 ```js

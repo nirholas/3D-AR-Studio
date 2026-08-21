@@ -125,10 +125,15 @@ try {
 
 	const caps = await page.evaluate(async () => {
 		const mod = await import('./ar-studio.min.js');
-		return { capability: await mod.arCapability(), banner: mod.withQuickLookBanner('blob:abc', { title: 'Crate' }) };
+		return {
+			capability: await mod.arCapability(),
+			banner: mod.withQuickLookBanner('blob:abc', { title: 'Crate', callToAction: 'Buy' }),
+			filename: mod.usdzFilename('Adjustable Wrench'),
+		};
 	});
 	step('AR capability resolves without throwing', typeof caps.capability === 'string', caps.capability);
-	step('the Quick Look banner is attached as fragment params', caps.banner === 'blob:abc#checkoutTitle=Crate');
+	step('the Quick Look banner is attached as fragment params', caps.banner === 'blob:abc#checkoutTitle=Crate&callToAction=Buy');
+	step('a model title becomes a .usdz filename', caps.filename === 'adjustable-wrench.usdz', caps.filename);
 
 	await page.screenshot({ path: resolve(ROOT, 'smoke.png') });
 
@@ -194,11 +199,16 @@ try {
 		step(`${device} keeps focus inside the dialog`, sheet.focused.includes('ars-ar-'), sheet.focused);
 
 		if (want === 'quicklook') {
-			step('the prepared asset is a USDZ blob with a Quick Look banner',
-				/^blob:/.test(sheet.href) && sheet.href.includes('checkoutTitle=Wrench'), sheet.href.slice(0, 70));
+			step('the prepared asset is a USDZ blob', /^blob:/.test(sheet.href), sheet.href.slice(0, 70));
 			await p2.click('.ars-ar-go');
 			const clicks = await p2.evaluate(() => window.__arClicks);
 			step('tapping Place activates an <a rel="ar"> straight away', clicks.length === 1, clicks[0]?.slice(0, 46));
+			// Safari sniffs the file type from the name. Without one it opens Quick
+			// Look in Object mode with AR unavailable, which looks like working
+			// software right up to the moment someone tries to use it.
+			const dl = await p2.evaluate(() => document.querySelector('a[rel="ar"]')?.getAttribute('download'));
+			step('the anchor names the blob, so Safari opens AR and not Object mode',
+				dl === 'wrench.usdz', String(dl));
 			const closed = await p2.evaluate(() => document.querySelector('.ars-modal[aria-label="Place a model in your space"]').hidden);
 			step('the sheet closes once the AR viewer has been handed the model', closed === true);
 			// Second tap: the conversion is cached, so the sheet must arm without

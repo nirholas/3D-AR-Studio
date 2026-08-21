@@ -96,7 +96,6 @@ test('iOS converts once per key, and opening never converts', async (t) => {
 	assert.equal(first.viewer, 'quicklook');
 	assert.equal(built, 1);
 	assert.match(first.href, /^blob:/);
-	assert.match(first.href, /checkoutTitle=Chair/, 'the banner title rides on the fragment');
 	assert.equal(mod.isQuickLookReady('chair|1.000'), true);
 
 	const second = await mod.prepareNativeAr(model);
@@ -110,6 +109,9 @@ test('iOS converts once per key, and opening never converts', async (t) => {
 	assert.equal(clicked[0].rel, 'ar');
 	assert.equal(clicked[0].href, second.href);
 	assert.equal(clicked[0].children.length, 1, 'iOS needs a child element inside the anchor');
+	// The bug this pins: without a filename Safari cannot tell a blob URL is a
+	// USDZ, opens Quick Look in Object mode, and AR is silently unavailable.
+	assert.equal(clicked[0].download, 'chair.usdz');
 
 	assert.equal(mod.releaseQuickLook('chair|1.000'), true);
 	assert.equal(mod.isQuickLookReady('chair|1.000'), false);
@@ -162,21 +164,41 @@ test('a failed conversion is retryable rather than cached forever', async (t) =>
 	mod.clearQuickLookCache();
 });
 
-test('banner fields are clamped and escaped, never trusted verbatim', async (t) => {
+test('a blob URL always reaches Quick Look under a .usdz filename', async (t) => {
+	const { clicked } = installDom(IPHONE);
+	t.after(uninstallDom);
+	const { openQuickLook, usdzFilename } = await import(`../src/studio/native-ar.js?filename`);
+
+	assert.equal(usdzFilename('Adjustable Wrench'), 'adjustable-wrench.usdz');
+	assert.equal(usdzFilename('  ~!@#  '), 'model.usdz', 'a title with no usable characters still names the file');
+	assert.equal(usdzFilename(''), 'model.usdz');
+	assert.equal(usdzFilename('x'.repeat(200)).length, 60 + '.usdz'.length);
+
+	openQuickLook('blob:https://a.test/abc', { name: 'Trench Car' });
+	assert.equal(clicked[0].download, 'trench-car.usdz');
+
+	// A real https .usdz already carries its extension; adding `download` there
+	// would only risk turning an AR launch into a file save.
+	openQuickLook('https://a.test/chair.usdz');
+	assert.equal(clicked[1].download, undefined);
+});
+
+test('the checkout banner is all-or-nothing, the way Quick Look renders it', async (t) => {
 	installDom(IPHONE);
 	t.after(uninstallDom);
 	const { withQuickLookBanner } = await import(`../src/studio/native-ar.js?banner`);
 	assert.equal(withQuickLookBanner('blob:x'), 'blob:x', 'no fields, no fragment');
-	assert.equal(withQuickLookBanner('blob:x', { title: '  ' }), 'blob:x');
+	// A title with no action would render a banner with an empty button.
+	assert.equal(withQuickLookBanner('blob:x', { title: 'Chair' }), 'blob:x');
 	assert.equal(
-		withQuickLookBanner('blob:x', { title: 'a & b' }),
-		'blob:x#checkoutTitle=a%20%26%20b',
+		withQuickLookBanner('blob:x', { title: 'a & b', callToAction: 'Buy' }),
+		'blob:x#checkoutTitle=a%20%26%20b&callToAction=Buy',
 	);
-	const long = withQuickLookBanner('blob:x', { title: 'z'.repeat(200) });
-	assert.equal(long.length, 'blob:x#checkoutTitle='.length + 80);
+	const long = withQuickLookBanner('blob:x', { title: 'z'.repeat(200), callToAction: 'Buy' });
+	assert.equal(long.length, 'blob:x#checkoutTitle='.length + 80 + '&callToAction=Buy'.length);
 	assert.equal(
-		withQuickLookBanner('blob:x#already', { subtitle: 'sub' }),
-		'blob:x#already&checkoutSubtitle=sub',
+		withQuickLookBanner('blob:x#already', { subtitle: 'sub', callToAction: 'Buy' }),
+		'blob:x#already&checkoutSubtitle=sub&callToAction=Buy',
 	);
 });
 

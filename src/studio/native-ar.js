@@ -38,22 +38,55 @@ let _anchor = null;
 export const QUICK_LOOK_BANNER_TAPPED = '_apple_ar_quicklook_button_tapped';
 
 /**
+ * A filesystem-safe `<name>.usdz` for a model title.
+ *
+ * This is not cosmetic. See `openQuickLook`: the extension in this name is what
+ * tells Safari the blob it is being handed is an AR asset.
+ *
+ * @param {string} [title]
+ * @returns {string}
+ */
+export function usdzFilename(title) {
+	const slug = String(title || '')
+		.trim()
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-+|-+$/g, '')
+		.slice(0, 60);
+	return `${slug || 'model'}.usdz`;
+}
+
+/**
  * Open a USDZ in Quick Look. Safari activates it when an `<a rel="ar">` is
  * clicked programmatically, which is why this builds an anchor rather than
  * navigating.
  *
+ * THE `download` ATTRIBUTE IS LOAD-BEARING and the single least obvious line in
+ * this package. Safari decides whether a URL is an AR asset by looking at its
+ * file extension. A `blob:` URL has no path and therefore no extension, so
+ * without a filename Safari does open Quick Look, but as a generic 3D file
+ * preview: the viewer comes up in Object mode with AR unavailable, which reads
+ * as "AR is broken" while everything else looks perfectly fine. `download`
+ * supplies the name Safari sniffs, and Quick Look enters AR. This is exactly
+ * what <model-viewer> does for its own generated USDZ, and why an app built on
+ * model-viewer reaches ARKit while a hand-rolled anchor does not.
+ *
  * @param {string} usdzUrl
- * @param {{onBannerTap?: () => void}} [opts]
+ * @param {{onBannerTap?: () => void, name?: string}} [opts] `name` becomes the
+ *   Quick Look filename; pass the model's title.
  */
-export function openQuickLook(usdzUrl, { onBannerTap } = {}) {
+export function openQuickLook(usdzUrl, { onBannerTap, name = '' } = {}) {
 	if (_anchor) { _anchor.remove(); _anchor = null; }
 	const a = document.createElement('a');
+	// Attribute order mirrors model-viewer's: rel, then the child image, then
+	// href. Safari is known to be picky about the anchor being complete before
+	// it is activated.
 	a.rel = 'ar';
-	a.href = usdzUrl;
 	// iOS needs a child element for a programmatic click to open Quick Look.
 	a.appendChild(document.createElement('img'));
-	// Present but invisible. Deliberately not display:none: anchors removed from
-	// layout are not reliably activated.
+	a.href = usdzUrl;
+	if (/^blob:/i.test(usdzUrl)) a.setAttribute('download', usdzFilename(name));
+	// Present but invisible.
 	a.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none;overflow:hidden;';
 	a.setAttribute('aria-hidden', 'true');
 	if (typeof onBannerTap === 'function') {
@@ -231,11 +264,10 @@ export async function prepareNativeAr({ src = '', title = '', usdz = '', key = '
 				return glbUrlToUsdzBlob(src, { signal, onProgress });
 			});
 		}
-		const banner = withQuickLookBanner(href, { title, callToAction: '' });
 		return {
 			viewer: 'quicklook',
-			href: banner,
-			open: (o) => openQuickLook(banner, o),
+			href,
+			open: (o) => openQuickLook(href, { name: title, ...o }),
 		};
 	}
 
@@ -295,6 +327,10 @@ export function withQuickLookBanner(url, { title, subtitle, callToAction } = {})
 		const v = typeof value === 'string' ? value.trim().slice(0, BANNER_FIELD_MAX) : '';
 		if (v) params.push(`${key}=${encodeURIComponent(v)}`);
 	};
+	// Quick Look renders the banner only when it has a button to render: a lone
+	// title produces a banner with an empty action. Apple treats these as one
+	// set, so this does too, and a caller that wants the banner passes the set.
+	if (!callToAction || typeof callToAction !== 'string' || !callToAction.trim()) return url;
 	push('checkoutTitle', title);
 	push('checkoutSubtitle', subtitle);
 	push('callToAction', callToAction);

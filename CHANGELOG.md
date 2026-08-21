@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.1
+
+- **Quick Look now opens in AR, not Object mode.** 0.3.0 got an iPhone all the way into Apple's
+  viewer and then landed on the turntable, with the AR tab inert: everything looked right and
+  the one thing anybody wanted did not happen. Safari decides whether a URL is an AR asset from
+  its file extension, and a `blob:` URL has no path and therefore no extension, so the generated
+  USDZ was opened as a generic 3D file. The anchor now carries
+  `download="<model-name>.usdz"`, which is the name Safari sniffs. Exported as
+  `usdzFilename()`, and pinned by a test, because nothing about the symptom points at the cause.
+- The Quick Look checkout banner is all-or-nothing now, matching how Quick Look renders it:
+  `withQuickLookBanner()` returns the URL untouched unless a `callToAction` is present, instead
+  of producing a banner with a title and a dead button.
+
 ## 0.3.0
 
 - **"Place in your space" now actually opens the AR viewer on an iPhone.** 0.2.0 routed iOS to

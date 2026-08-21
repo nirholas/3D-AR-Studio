@@ -268,6 +268,11 @@ export declare function isQuickLookReady(key: string): boolean;
 export declare function releaseQuickLook(key: string): boolean;
 /** Drop every cached USDZ and release the memory behind it. */
 export declare function clearQuickLookCache(): void;
+/**
+ * Append Quick Look checkout-banner fields to a USDZ URL. Returns the URL
+ * unchanged unless `callToAction` is present: Quick Look renders the banner
+ * only as a complete set, and a title alone yields a banner with a dead button.
+ */
 export declare function withQuickLookBanner(url: string, fields?: { title?: string; subtitle?: string; callToAction?: string }): string;
 /** Fetch a GLB and convert it to a USDZ blob, on the device. */
 export declare function glbUrlToUsdzBlob(glbUrl: string, opts?: { signal?: AbortSignal; onProgress?: (stage: string) => void }): Promise<Blob>;
@@ -279,7 +284,16 @@ export declare function coerceMaterialsToStandard(scene: any): void;
 export declare function ensureNormals(scene: any): void;
 export declare function canUseQuickLook(): boolean;
 export declare function canUseSceneViewer(): boolean;
-export declare function openQuickLook(usdzUrl: string, opts?: { onBannerTap?: () => void }): void;
+/**
+ * Open a USDZ in Quick Look.
+ *
+ * When `usdzUrl` is a `blob:` URL the anchor is given `download="<name>.usdz"`,
+ * because Safari decides whether a URL is an AR asset from its file extension:
+ * without it Quick Look opens in Object mode with AR unavailable.
+ */
+export declare function openQuickLook(usdzUrl: string, opts?: { onBannerTap?: () => void; name?: string }): void;
+/** A filesystem-safe `<slug>.usdz` name for a model title. */
+export declare function usdzFilename(title?: string): string;
 export declare function openSceneViewer(glbUrl: string, opts?: { title?: string; link?: string; fallbackUrl?: string }): void;
 export declare function isIOS(): boolean;
 export declare function isAndroid(): boolean;
