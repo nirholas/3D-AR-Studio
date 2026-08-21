@@ -299,6 +299,44 @@ export function studioStyles() {
 	color: var(--ars-accent-ink); font-variant-numeric: tabular-nums;
 }
 .ars-link-out { font-size: 12px; color: var(--ars-ink-faint); word-break: break-all; }
+
+/* ── AR hand-off sheet ── */
+.ars-ar-sheet { gap: 14px; }
+.ars-ar-sheet .ars-btn { width: 100%; }
+.ars-ar-heading { letter-spacing: -0.01em; }
+.ars-ar-target { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; }
+.ars-ar-thumb {
+	width: min(210px, 52vw); aspect-ratio: 1; border-radius: 18px;
+	background: radial-gradient(120% 120% at 50% 0%, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02));
+	border: 1px solid var(--ars-line);
+	display: grid; place-items: center; overflow: hidden;
+	font-size: 42px; color: var(--ars-ink-faint);
+}
+.ars-ar-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.ars-ar-name { font-size: 15px; font-weight: 700; text-align: center; overflow-wrap: anywhere; }
+.ars-ar-picker { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; width: 100%; }
+.ars-ar-chip {
+	appearance: none; cursor: pointer; font: inherit; font-size: 12px; font-weight: 650;
+	color: var(--ars-ink-dim); background: rgba(255, 255, 255, 0.06);
+	border: 1px solid var(--ars-line); border-radius: 999px; padding: 6px 11px;
+	max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.ars-ar-chip:hover { background: rgba(255, 255, 255, 0.12); color: var(--ars-ink); }
+.ars-ar-chip:active { transform: translateY(1px); }
+.ars-ar-chip[aria-pressed="true"] {
+	background: color-mix(in srgb, var(--ars-accent) 20%, transparent);
+	border-color: color-mix(in srgb, var(--ars-accent) 55%, transparent);
+	color: var(--ars-accent-ink);
+}
+.ars-ar-hint { color: var(--ars-ink-faint) !important; font-size: 12.5px !important; }
+.ars-ar-status { min-height: 17px; display: flex; align-items: center; justify-content: center; gap: 7px; }
+.ars-ar-status.is-error { color: #ffb4b4 !important; }
+.ars-ar-status.is-ready { color: var(--ars-accent-ink) !important; }
+.ars-ar-status .ars-spinner { width: 12px; height: 12px; border-width: 2px; }
+.ars-ar-go[aria-busy="true"] { cursor: progress; }
+.ars-ar-go { font-size: 15px; padding: 13px 18px; }
+.ars-ar-go-icon { font-size: 15px; }
 .ars-dialog-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 .ars-divider { width: 100%; height: 1px; background: var(--ars-line); margin: 2px 0; }
 

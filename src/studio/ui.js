@@ -169,6 +169,40 @@ export function buildUI(host, cfg) {
 		]),
 	]);
 
+	// ── AR hand-off sheet ────────────────────────────────────────────────────
+	// The one screen between "I want this in my room" and the device's own AR
+	// viewer. It exists because that hand-off is not instant on iOS: the GLB has
+	// to become a USDZ first, and Safari will only open Quick Look while the page
+	// still holds a user gesture. So the sheet prepares in the background, says
+	// so, and then puts a real button under the person's thumb: one tap, straight
+	// into ARKit, no dead wait.
+	const arThumb = el('span', { class: 'ars-ar-thumb', 'aria-hidden': 'true' });
+	const arName = el('span', { class: 'ars-ar-name' });
+	const arPicker = el('div', { class: 'ars-ar-picker', hidden: true, role: 'group', 'aria-label': 'Choose which model to place' });
+	const arHint = el('p', { class: 'ars-ar-hint' });
+	const arStatus = el('p', { class: 'ars-ar-status', role: 'status', 'aria-live': 'polite' });
+	const arGo = el('button', { type: 'button', class: 'ars-btn ars-btn-primary ars-ar-go' }, [
+		el('span', { class: 'ars-ar-go-icon', 'aria-hidden': 'true', text: '⬡' }),
+		el('span', { class: 'ars-ar-go-label', text: 'Place in your space' }),
+	]);
+	const arXr = el('button', { type: 'button', class: 'ars-btn ars-ar-xr', hidden: true }, [
+		el('span', { 'aria-hidden': 'true', text: '✦' }), 'Immersive AR: place the whole scene',
+	]);
+	const arQr = el('button', { type: 'button', class: 'ars-btn ars-ar-qr', hidden: true }, [
+		el('span', { 'aria-hidden': 'true', text: '📱' }), 'Open on your phone',
+	]);
+	const arClose = el('button', { type: 'button', class: 'ars-btn ars-ar-done', text: 'Done' });
+	const arModal = el('div', { class: 'ars-modal', hidden: true, role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Place a model in your space' }, [
+		el('div', { class: 'ars-dialog ars-ar-sheet' }, [
+			el('h2', { class: 'ars-ar-heading', text: 'Place in your space' }),
+			el('div', { class: 'ars-ar-target' }, [arThumb, arName]),
+			arPicker,
+			arHint,
+			arStatus,
+			arGo, arXr, arQr, arClose,
+		]),
+	]);
+
 	// ── Room dialog ──────────────────────────────────────────────────────────
 	const roomCreate = el('button', { type: 'button', class: 'ars-btn ars-btn-primary', text: 'Start a shared room' });
 	const roomJoinInput = el('input', { class: 'ars-search', type: 'text', placeholder: 'Room code', 'aria-label': 'Room code', maxlength: '20', autocomplete: 'off', spellcheck: 'false' });
@@ -197,7 +231,7 @@ export function buildUI(host, cfg) {
 		]),
 	]);
 
-	const hud = el('div', { class: 'ars-hud' }, [top, empty, status, chip, selbar, dock, tray, qrModal, roomModal]);
+	const hud = el('div', { class: 'ars-hud' }, [top, empty, status, chip, selbar, dock, tray, qrModal, arModal, roomModal]);
 	const root = el('div', { class: 'ars-root' }, [video, canvas, hud]);
 	if (t.accent) root.style.setProperty('--ars-accent', t.accent);
 	host.appendChild(root);
@@ -219,6 +253,7 @@ export function buildUI(host, cfg) {
 		selbar, selName,
 		tray, trayTabs, trayBody, trayClose,
 		qrModal, qrBox, qrLink, qrClose,
+		arModal, arThumb, arName, arPicker, arHint, arStatus, arGo, arXr, arQr, arClose,
 		roomModal, roomIdle, roomLive, roomCreate, roomJoinForm, roomJoinInput,
 		roomCode, roomPresence, roomQr, roomCopy, roomLeave, roomClose,
 	};

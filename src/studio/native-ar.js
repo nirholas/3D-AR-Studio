@@ -107,53 +107,170 @@ export async function arCapability() {
 	return 'none';
 }
 
+// ── The USDZ cache ────────────────────────────────────────────────────────
+//
+// Two taps on "Place in your space" must not pay for two conversions, and the
+// studio pre-warms this entry the moment it knows which model the button will
+// send, so the tap itself is usually instant.
+//
+// Bounded on purpose: each entry pins a USDZ blob in memory, and a phone that
+// has browsed twenty models should not be holding twenty of them. Eviction
+// revokes the object URL, which is the only way that memory ever comes back.
+
+const MAX_CACHED_USDZ = 4;
+
+/** @type {Map<string, {promise: Promise<string>, href: string}>} */
+const _usdzCache = new Map();
+
+function evictOldestUsdz() {
+	while (_usdzCache.size > MAX_CACHED_USDZ) {
+		const [key, entry] = _usdzCache.entries().next().value;
+		_usdzCache.delete(key);
+		if (entry.href) URL.revokeObjectURL(entry.href);
+	}
+}
+
+/** Drop every cached USDZ and release the memory behind it. */
+export function clearQuickLookCache() {
+	for (const entry of _usdzCache.values()) {
+		if (entry.href) URL.revokeObjectURL(entry.href);
+	}
+	_usdzCache.clear();
+}
+
+/** Drop one cached USDZ and release the memory behind it. */
+export function releaseQuickLook(key) {
+	const entry = _usdzCache.get(key);
+	if (!entry) return false;
+	_usdzCache.delete(key);
+	if (entry.href) URL.revokeObjectURL(entry.href);
+	return true;
+}
+
+/** Is a Quick Look asset for this key already converted and ready to open? */
+export function isQuickLookReady(key) {
+	return Boolean(key && _usdzCache.get(key)?.href);
+}
+
 /**
- * Open ONE model in the device's native AR viewer.
+ * Convert once per key and hand back a `blob:` URL Quick Look can open.
  *
- * On iOS the GLB is converted to USDZ on the device first (a real conversion via
- * three.js's USDZExporter, not a placeholder), which takes a second or two on a
- * typical prop, so pass `onProgress` and show it.
+ * @param {string} key   Cache identity. Include anything that changes the bytes
+ *                       (the source URL, and the scale when it is baked in).
+ * @param {() => Promise<Blob>} build
+ * @returns {Promise<string>}
+ */
+export async function cachedUsdzUrl(key, build) {
+	const hit = _usdzCache.get(key);
+	if (hit) {
+		// Re-inserting makes the map least-recently-used rather than insertion
+		// ordered, so the model someone keeps opening is not the one evicted.
+		_usdzCache.delete(key);
+		_usdzCache.set(key, hit);
+		return hit.promise;
+	}
+	const entry = { href: '', promise: null };
+	entry.promise = (async () => {
+		const blob = await build();
+		entry.href = URL.createObjectURL(blob);
+		return entry.href;
+	})();
+	// A conversion that throws must not poison the key forever: the next tap
+	// should be able to try again.
+	entry.promise.catch(() => {
+		if (_usdzCache.get(key) === entry) _usdzCache.delete(key);
+	});
+	_usdzCache.set(key, entry);
+	evictOldestUsdz();
+	return entry.promise;
+}
+
+/**
+ * Everything the device's AR viewer needs, WITHOUT opening it yet.
+ *
+ * The split matters more than it looks. Safari only honours a `rel="ar"`
+ * activation while the page still holds user activation, and converting a GLB
+ * to USDZ takes seconds: do the conversion inside the tap handler and by the
+ * time the anchor is clicked the gesture has expired and iOS silently declines
+ * to open Quick Look, which reads as a dead button. So callers prepare first
+ * (before the tap, or behind a progress UI) and call the returned `open()`
+ * synchronously from a real tap.
  *
  * @param {object} model
  * @param {string} model.src        https URL of the .glb
  * @param {string} [model.title]    Name shown in the AR viewer's banner
  * @param {string} [model.usdz]     A ready-made USDZ, skipping conversion
+ * @param {string} [model.key]      Cache identity; defaults to `src`
+ * @param {() => Promise<Blob>} [model.build]  Produce the USDZ without refetching
  * @param {object} [opts]
- * @param {(stage: 'download'|'parse'|'convert'|'open') => void} [opts.onProgress]
+ * @param {(stage: 'download'|'parse'|'convert') => void} [opts.onProgress]
  * @param {string} [opts.fallbackUrl]  Where Android lands without ARCore
  * @param {AbortSignal} [opts.signal]
- * @returns {Promise<'quicklook'|'sceneviewer'|'none'>} which viewer opened
+ * @returns {Promise<null | {viewer:'quicklook'|'sceneviewer', href: string,
+ *   open: (o?: {onBannerTap?: () => void}) => void}>} null when this device has
+ *   no native AR viewer at all.
  */
-export async function placeInYourSpace({ src, title = '', usdz = '' } = {}, {
+export async function prepareNativeAr({ src = '', title = '', usdz = '', key = '', build } = {}, {
 	onProgress, fallbackUrl = '', signal,
 } = {}) {
-	if (!src && !usdz) throw new Error('ar-studio: nothing to place');
+	if (!src && !usdz && !build) throw new Error('ar-studio: nothing to place');
 
 	if (canUseQuickLook()) {
 		let href = usdz;
 		if (!href) {
-			// Imported here rather than at module scope so a page that never opens
-			// native AR never downloads the exporter.
-			const { glbUrlToUsdzBlob } = await import('./usdz.js');
-			const blob = await glbUrlToUsdzBlob(src, { signal, onProgress });
-			href = URL.createObjectURL(blob);
-			// Quick Look reads the file when the anchor is activated, so the URL has
-			// to outlive this call; a minute is far longer than the viewer needs and
-			// still bounds the leak.
-			setTimeout(() => URL.revokeObjectURL(href), 60000);
+			const cacheKey = key || src;
+			if (!cacheKey) throw new Error('ar-studio: a cache key or src is required');
+			href = await cachedUsdzUrl(cacheKey, async () => {
+				if (build) {
+					onProgress?.('convert');
+					return build();
+				}
+				// Imported here rather than at module scope so a page that never opens
+				// native AR never downloads the exporter.
+				const { glbUrlToUsdzBlob } = await import('./usdz.js');
+				return glbUrlToUsdzBlob(src, { signal, onProgress });
+			});
 		}
-		onProgress?.('open');
-		openQuickLook(withQuickLookBanner(href, { title, callToAction: '' }));
-		return 'quicklook';
+		const banner = withQuickLookBanner(href, { title, callToAction: '' });
+		return {
+			viewer: 'quicklook',
+			href: banner,
+			open: (o) => openQuickLook(banner, o),
+		};
 	}
 
 	if (canUseSceneViewer()) {
-		onProgress?.('open');
-		openSceneViewer(src, { title, fallbackUrl });
-		return 'sceneviewer';
+		if (!src) throw new Error('ar-studio: Scene Viewer needs a GLB URL');
+		return {
+			viewer: 'sceneviewer',
+			href: src,
+			open: () => openSceneViewer(src, { title, fallbackUrl }),
+		};
 	}
 
-	return 'none';
+	return null;
+}
+
+/**
+ * Prepare and open ONE model in the device's native AR viewer, in one call.
+ *
+ * Convenient, and the right shape when the USDZ is already cached (the studio
+ * pre-warms it). When it is not, prefer `prepareNativeAr()` and open from a
+ * tap: see the note there about Safari and user activation.
+ *
+ * @param {object} model            See `prepareNativeAr`
+ * @param {object} [opts]
+ * @param {(stage: 'download'|'parse'|'convert'|'open') => void} [opts.onProgress]
+ * @param {string} [opts.fallbackUrl]
+ * @param {AbortSignal} [opts.signal]
+ * @returns {Promise<'quicklook'|'sceneviewer'|'none'>} which viewer opened
+ */
+export async function placeInYourSpace(model = {}, opts = {}) {
+	const handoff = await prepareNativeAr(model, opts);
+	if (!handoff) return 'none';
+	opts.onProgress?.('open');
+	handoff.open();
+	return handoff.viewer;
 }
 
 // Quick Look renders its banner on one line and truncates long strings itself;

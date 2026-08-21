@@ -39,12 +39,13 @@ export {
 	buildSceneViewerUrl, buildViewerUrl, ArUrlError, DEFAULT_ORIGIN,
 } from './ar-launch.js';
 export {
-	arCapability, placeInYourSpace, withQuickLookBanner,
+	arCapability, prepareNativeAr, placeInYourSpace, withQuickLookBanner,
 	canUseQuickLook, canUseSceneViewer, openQuickLook, openSceneViewer,
+	cachedUsdzUrl, isQuickLookReady, releaseQuickLook, clearQuickLookCache,
 	isIOS, isAndroid, QUICK_LOOK_BANNER_TAPPED,
 } from './studio/native-ar.js';
 export {
-	glbUrlToUsdzBlob, sceneToUsdzBlob, bakeSkinnedMeshes,
+	glbUrlToUsdzBlob, objectToUsdzBlob, sceneToUsdzBlob, bakeSkinnedMeshes,
 	coerceMaterialsToStandard, ensureNormals,
 } from './studio/usdz.js';
 

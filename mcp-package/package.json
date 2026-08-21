@@ -1,6 +1,6 @@
 {
 	"name": "3d-ar-studio-mcp",
-	"version": "0.1.1",
+	"version": "0.3.0",
 	"mcpName": "io.github.nirholas/3d-ar-studio",
 	"description": "MCP server for 3D AR Studio: generate 3D models, search a free CC0 library, arrange them into one scene, and hand back a link that opens the whole arrangement in augmented reality on a phone.",
 	"type": "module",
@@ -37,7 +37,7 @@
 		"README.md"
 	],
 	"dependencies": {
-		"3d-ar-studio": "^0.1.1"
+		"3d-ar-studio": "^0.3.0"
 	},
 	"engines": {
 		"node": ">=20"

@@ -99,7 +99,7 @@ export type StudioEventName =
 	| 'add' | 'remove' | 'select' | 'clear'
 	| 'generate' | 'generate-error'
 	| 'camera' | 'xr' | 'room' | 'share'
-	| 'native-ar' | 'native-ar-error';
+	| 'native-ar' | 'native-ar-error' | 'ar-sheet';
 
 export interface GeneratedModel {
 	src: string;
@@ -133,6 +133,10 @@ export declare class ArStudio {
 	enterAR(): Promise<unknown>;
 	/** Open one model in the device's native AR viewer. Defaults to the selection. */
 	placeInYourSpace(placement?: unknown): Promise<'quicklook' | 'sceneviewer' | 'none' | null>;
+	/** Open the AR hand-off sheet: prepare one model, then open the device viewer from one tap. */
+	openArSheet(placement?: unknown): void;
+	/** Close the AR hand-off sheet. */
+	closeArSheet(): void;
 	readonly arMode: ArCapability;
 	openRoom(code?: string): Promise<string>;
 	leaveRoom(): void;
@@ -218,13 +222,58 @@ export type ArCapability = 'webxr' | 'quicklook' | 'sceneviewer' | 'none';
 export declare function arCapability(): Promise<ArCapability>;
 /** Open one model in the device's own AR viewer (Quick Look / Scene Viewer). */
 export declare function placeInYourSpace(
-	model: { src: string; title?: string; usdz?: string },
-	opts?: { onProgress?: (stage: 'download' | 'parse' | 'convert' | 'open') => void; fallbackUrl?: string; signal?: AbortSignal },
+	model: NativeArModel,
+	opts?: NativeArOptions,
 ): Promise<'quicklook' | 'sceneviewer' | 'none'>;
+
+export interface NativeArModel {
+	src?: string;
+	title?: string;
+	/** A ready-made USDZ, skipping conversion entirely. */
+	usdz?: string;
+	/** Cache identity for the converted USDZ. Defaults to `src`. */
+	key?: string;
+	/** Produce the USDZ without refetching the GLB (export from a live scene). */
+	build?: () => Promise<Blob>;
+}
+
+export interface NativeArOptions {
+	onProgress?: (stage: 'download' | 'parse' | 'convert' | 'open') => void;
+	fallbackUrl?: string;
+	signal?: AbortSignal;
+}
+
+export interface NativeArHandoff {
+	viewer: 'quicklook' | 'sceneviewer';
+	href: string;
+	/** Call this synchronously from a real tap: iOS opens Quick Look only while the gesture is live. */
+	open(opts?: { onBannerTap?: () => void }): void;
+}
+
+/**
+ * Prepare the device AR hand-off WITHOUT opening it, so the tap that opens it
+ * stays inside the user gesture Safari requires. Resolves null on a device with
+ * no native AR viewer.
+ */
+export declare function prepareNativeAr(
+	model: NativeArModel,
+	opts?: NativeArOptions,
+): Promise<NativeArHandoff | null>;
+
+/** Convert once per key and hand back a `blob:` URL Quick Look can open. */
+export declare function cachedUsdzUrl(key: string, build: () => Promise<Blob>): Promise<string>;
+/** Is a Quick Look asset for this key already converted and ready to open? */
+export declare function isQuickLookReady(key: string): boolean;
+/** Drop one cached USDZ and revoke its object URL. */
+export declare function releaseQuickLook(key: string): boolean;
+/** Drop every cached USDZ and release the memory behind it. */
+export declare function clearQuickLookCache(): void;
 export declare function withQuickLookBanner(url: string, fields?: { title?: string; subtitle?: string; callToAction?: string }): string;
 /** Fetch a GLB and convert it to a USDZ blob, on the device. */
 export declare function glbUrlToUsdzBlob(glbUrl: string, opts?: { signal?: AbortSignal; onProgress?: (stage: string) => void }): Promise<Blob>;
-export declare function sceneToUsdzBlob(scene: any): Promise<Blob>;
+/** Convert an object already standing in a live scene to USDZ: no refetch, current pose and size. */
+export declare function objectToUsdzBlob(object: any): Promise<Blob>;
+export declare function sceneToUsdzBlob(scene: any, options?: Record<string, unknown>): Promise<Blob>;
 export declare function bakeSkinnedMeshes(scene: any): void;
 export declare function coerceMaterialsToStandard(scene: any): void;
 export declare function ensureNormals(scene: any): void;

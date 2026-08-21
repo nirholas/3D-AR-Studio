@@ -30,11 +30,13 @@ ends the session. This one keeps the whole scene in your page:
   generation runs behind the live view and the finished model drops into the room.
 - **Real WebXR where it exists.** An always-armed hit-test reticle, one `XRAnchor` per placed
   model, real-world light estimation, and depth occlusion so models hide behind your furniture.
-- **Real ARKit and ARCore everywhere else.** iPhones have no WebXR, so an iPhone gets Apple's
-  AR Quick Look instead: true plane detection, true scale, true occlusion. The GLB is converted
-  to USDZ on the device (a real conversion via three.js's `USDZExporter`, about a second for a
-  typical prop, no server involved). Android without WebXR gets Scene Viewer. Desktop gets a
-  grid preview and a QR hand-off to a phone.
+- **Real ARKit and ARCore everywhere else.** iPhones have no WebXR, so tapping **Place in your
+  space** opens Apple's AR Quick Look for real: true plane detection, true scale, true
+  occlusion, the system's own "View in AR" sheet. The model is converted to USDZ on the device
+  (a real conversion via three.js's `USDZExporter`, no server involved) and, because it is
+  exported from the copy already standing in your scene, it arrives at the size you pinched it
+  to and in the pose it was in. Android without WebXR gets Scene Viewer. Desktop gets a grid
+  preview and a QR hand-off to a phone.
 - **Scenes are links.** Models, positions, rotations and scales round-trip through the URL.
   Compose on a laptop, scan the QR, it reopens exactly on your phone.
 - **Build together, live.** Open a room, share a six-character code, and every add and move
@@ -213,7 +215,9 @@ await studio.generate('a brass desk lamp')   // text to 3D, into the room
 studio.viewInYourSpace(src, title)           // open the hosted launch page for one model
 await studio.startCamera()                   // needs a user gesture on iOS
 await studio.enterAR()                       // best AR path for this device
-await studio.placeInYourSpace()              // native viewer (Quick Look / Scene Viewer)
+studio.openArSheet()                         // the "Place in your space" hand-off sheet
+studio.closeArSheet()
+await studio.placeInYourSpace()              // straight to the native viewer, no sheet
 await studio.toggleImmersive()               // enter or leave WebXR specifically
 await studio.openRoom()                      // returns the room code
 studio.destroy()                             // releases camera, socket and GPU context
@@ -236,6 +240,7 @@ studio.destroy()                             // releases camera, socket and GPU 
 | `xr` | `{ active }` |
 | `native-ar` | `{ src, title, viewer }` where viewer is `quicklook`, `sceneviewer` or `none` |
 | `native-ar-error` | `{ error, src }` |
+| `ar-sheet` | `{ open }` when the hand-off sheet opens or closes |
 | `room` | `{ status, code }` |
 | `share` | `{ url }` |
 
@@ -330,7 +335,7 @@ A session looks like this:
 | Device | Path | What you get |
 | --- | --- | --- |
 | Android Chrome | WebXR `immersive-ar` | The whole scene in the room: hit-test placement, per-model anchors, light estimation, depth occlusion. |
-| iOS Safari | AR Quick Look | One model at a time in Apple's own viewer, with real ARKit tracking, scale and occlusion. The GLB is converted to USDZ on the device. Camera passthrough with gyro world-lock composes the multi-model scene in-page alongside it. |
+| iOS Safari | AR Quick Look | One model at a time in Apple's own viewer, with real ARKit tracking, scale and occlusion. The model is converted to USDZ on the device. Camera passthrough with gyro world-lock composes the multi-model scene in-page alongside it. |
 | Android without WebXR | Scene Viewer | One model at a time through ARCore, with a browser fallback if ARCore is missing. |
 | Desktop | Preview | Grid floor, drag-look, QR hand-off to a phone. |
 | Headsets | WebXR | Same as Android Chrome. |
@@ -339,6 +344,53 @@ The **AR** button in the top bar always takes the best path the device has, labe
 never promises the wrong one, and acts on the selected model (or the last one placed).
 
 Camera and WebXR both need a secure context: `https://` or `localhost`.
+
+### Placing one model in someone's real room
+
+On a device with WebXR the AR button goes straight into an immersive session. Everywhere else
+it opens the **hand-off sheet**: which model is going, a picker when the scene holds more than
+one, and a single primary button that opens the device's own AR viewer.
+
+The sheet exists for one specific reason, and it is worth knowing about if you are building
+your own UI on top of this package:
+
+> **iOS opens AR Quick Look only while the page still holds the user gesture that asked for
+> it.** Converting a GLB to USDZ takes a second or two. Start the conversion inside the tap
+> handler and by the time the `<a rel="ar">` is clicked the gesture has expired, Safari
+> silently declines, and the button looks broken. That is the single most common reason a
+> "View in AR" button does nothing on an iPhone.
+
+So the package splits preparing from opening, and never does them in one tap:
+
+```js
+import { prepareNativeAr, isQuickLookReady } from '3d-ar-studio';
+
+// Ahead of the tap: convert, cache, and keep the result.
+const handoff = await prepareNativeAr({
+  src: 'https://example.com/chair.glb',
+  title: 'Chair',
+  key: 'chair@1.0',            // cache identity; include the scale if you bake one in
+});
+
+// Inside the tap, synchronously. No await between the click and open().
+button.addEventListener('click', () => handoff?.open());
+```
+
+`prepareNativeAr` resolves to `null` on a device with no native AR viewer, `{ viewer:
+'quicklook' }` on iOS with a `blob:` USDZ ready to open, and `{ viewer: 'sceneviewer' }` on
+Android, where nothing needs converting at all. Conversions are cached (four at a time,
+least-recently-used, object URLs revoked on eviction); `isQuickLookReady(key)`,
+`releaseQuickLook(key)` and `clearQuickLookCache()` let you drive that cache yourself.
+
+The studio warms the cache in the background for whichever model the button would send, which
+is why the second tap of the day is instant. `placeInYourSpace()` still exists and still does
+both halves in one call: reach for it when the USDZ is already cached, or when you are calling
+it from your own already-prepared button.
+
+Exporting from the live scene rather than refetching the GLB is deliberate too: no second
+download, no second CORS round trip, and the person gets the pose and the size they are
+looking at. `objectToUsdzBlob(object3D)` is exported if you want that for your own three.js
+scene.
 
 ---
 

@@ -155,6 +155,65 @@ try {
 		});
 		step(`${device} routes to its native AR viewer`, got.capability === want, `${got.capability}, button "${got.label}"`);
 		step(`${device} is offered the AR button`, got.buttonShown === true);
+
+		// The whole feature, end to end: put a real model in the scene, open the
+		// hand-off sheet the AR button opens, and prove the button in it is armed
+		// with something the device's AR viewer can actually open.
+		await p2.evaluate(() => document.querySelector('ar-studio').studio.addModel({
+			src: 'https://three.ws/cdn/objects/polyhaven/glb/adjustable_wrench.glb', title: 'Wrench',
+		}));
+		await p2.waitForFunction(() => document.querySelector('ar-studio').studio.placements.length > 0, { timeout: 45000 });
+		// Quick Look must never be handed a blob URL from a stale gesture, so the
+		// anchor click is intercepted rather than followed: Chromium would try to
+		// download the USDZ and tear the page down mid-check.
+		await p2.evaluate(() => {
+			window.__arClicks = [];
+			const real = window.HTMLAnchorElement.prototype.click;
+			window.HTMLAnchorElement.prototype.click = function patched() {
+				if (this.rel === 'ar') { window.__arClicks.push(this.href); return; }
+				return real.call(this);
+			};
+		});
+		await p2.click('.ars-ar-label');
+		await p2.waitForSelector('.ars-ar-go:not([disabled])', { timeout: 60000 });
+		const sheet = await p2.evaluate(() => {
+			const studio = document.querySelector('ar-studio').studio;
+			return {
+				open: !document.querySelector('.ars-modal[aria-label="Place a model in your space"]').hidden,
+				name: document.querySelector('.ars-ar-name')?.textContent,
+				goLabel: document.querySelector('.ars-ar-go-label')?.textContent,
+				status: document.querySelector('.ars-ar-status')?.textContent,
+				viewer: studio._arHandoff?.viewer,
+				href: studio._arHandoff?.href,
+				focused: document.activeElement?.className || '',
+			};
+		});
+		step(`${device} opens the AR hand-off sheet`, sheet.open && sheet.name === 'Wrench', `"${sheet.goLabel}", ${sheet.status}`);
+		step(`${device} arms the sheet with a real ${want} hand-off`, sheet.viewer === want,
+			`${sheet.viewer}: ${String(sheet.href).slice(0, 46)}`);
+		step(`${device} keeps focus inside the dialog`, sheet.focused.includes('ars-ar-'), sheet.focused);
+
+		if (want === 'quicklook') {
+			step('the prepared asset is a USDZ blob with a Quick Look banner',
+				/^blob:/.test(sheet.href) && sheet.href.includes('checkoutTitle=Wrench'), sheet.href.slice(0, 70));
+			await p2.click('.ars-ar-go');
+			const clicks = await p2.evaluate(() => window.__arClicks);
+			step('tapping Place activates an <a rel="ar"> straight away', clicks.length === 1, clicks[0]?.slice(0, 46));
+			const closed = await p2.evaluate(() => document.querySelector('.ars-modal[aria-label="Place a model in your space"]').hidden);
+			step('the sheet closes once the AR viewer has been handed the model', closed === true);
+			// Second tap: the conversion is cached, so the sheet must arm without
+			// ever disabling the button. A stall here is the dead-button bug.
+			const t0 = Date.now();
+			await p2.click('.ars-ar-label');
+			await p2.waitForFunction(() => {
+				const studio = document.querySelector('ar-studio').studio;
+				return studio._arHandoff && !document.querySelector('.ars-ar-go').disabled;
+			}, { timeout: 10000 });
+			step('a second open is instant, from the cached USDZ', Date.now() - t0 < 1500, `${Date.now() - t0} ms`);
+		} else {
+			step('Scene Viewer needs no conversion, so the button is armed on open',
+				sheet.href === 'https://three.ws/cdn/objects/polyhaven/glb/adjustable_wrench.glb');
+		}
 		await ctx.close();
 	}
 } catch (err) {

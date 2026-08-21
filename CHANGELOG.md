@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.3.0
+
+- **"Place in your space" now actually opens the AR viewer on an iPhone.** 0.2.0 routed iOS to
+  AR Quick Look but converted the model to USDZ *inside* the tap handler, and iOS opens
+  `rel="ar"` only while the page still holds the user gesture that asked for it. The conversion
+  outlived the gesture, Safari silently declined, and the button did nothing. Preparing and
+  opening are now separate steps: the studio converts ahead of the tap, and the tap itself is
+  synchronous straight through to the anchor.
+- **A designed hand-off sheet** between the AR button and the device viewer: a preview of the
+  model that is going, a picker when the scene holds more than one, honest progress while the
+  USDZ is built, an error state with a retry, and one primary button. Full dialog semantics
+  (focus capture and return, Escape, backdrop dismiss) and a designed empty state.
+- **The USDZ is exported from the copy already standing in your scene**, not refetched. No
+  second download, no second CORS round trip, and the model reaches Quick Look at the size it
+  was pinched to and in the pose it was in.
+- **Conversions are cached** (four at a time, least-recently-used, object URLs revoked on
+  eviction) and warmed in the background for whichever model the button would send, so opening
+  AR a second time is instant.
+- Exports are tuned for their only reader: `quickLookCompatible` corrects Apple's inverted
+  texture repeat handling, and horizontal plane anchoring is declared in the file.
+- A meshopt-compressed GLB no longer fails a one-shot conversion that starts before the decoder
+  has finished loading.
+- New API: `prepareNativeAr()`, `objectToUsdzBlob()`, `cachedUsdzUrl()`, `isQuickLookReady()`,
+  `releaseQuickLook()`, `clearQuickLookCache()`, `studio.openArSheet()`,
+  `studio.closeArSheet()`, and the `ar-sheet` event.
+
 ## 0.2.0
 
 - **Real ARKit and ARCore placement, not a camera-passthrough approximation.** An iPhone has no

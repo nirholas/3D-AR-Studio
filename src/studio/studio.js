@@ -26,7 +26,7 @@
 import {
 	AnimationMixer, Box3, CanvasTexture, Color, DirectionalLight, Fog, GridHelper, Group,
 	HemisphereLight, Mesh, MeshBasicMaterial, PerspectiveCamera, PlaneGeometry,
-	Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer,
+	Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget,
 } from 'three';
 import { clone as cloneSkinnedScene } from 'three/addons/utils/SkeletonUtils.js';
 
@@ -46,7 +46,9 @@ import { createLoadQueue } from './load-queue.js';
 import { sharedGLTFLoader } from './loaders.js';
 import { mountIdle } from './idle.js';
 import { captureComposite, shareOrDownload, shareUrlOrCopy } from './capture.js';
-import { arCapability, placeInYourSpace } from './native-ar.js';
+import {
+	arCapability, isQuickLookReady, placeInYourSpace, prepareNativeAr, releaseQuickLook,
+} from './native-ar.js';
 import { deriveVerticalFovDeg, DEFAULT_DIAG_FOV_DEG } from './camera-fov.js';
 import { clampPitch, isFiniteReading, resolveLockYaw, screenPitchDeg } from './sensor-fusion.js';
 import {
@@ -195,6 +197,17 @@ export class ArStudio {
 		/** 'webxr' | 'quicklook' | 'sceneviewer' | 'none', resolved at boot. */
 		this.arMode = 'none';
 		this._nativeArBusy = false;
+		/** The hand-off the AR sheet's button will fire, once it is prepared. */
+		this._arHandoff = null;
+		this._arTarget = null;
+		/** Bumped on every sheet open and target change so a slow, stale
+		 *  conversion can never enable the button for the wrong model. */
+		this._arToken = 0;
+		this._arWarmTimer = null;
+		/** Set when a conversion failed and the sheet's button is a retry. */
+		this._arRetry = null;
+		/** USDZ cache keys this studio created, so destroy() frees only its own. */
+		this._arKeys = new Set();
 		this.arTrackW = 0;
 		this.arTrackH = 0;
 
@@ -288,6 +301,18 @@ export class ArStudio {
 		bind(u.qrBtn, 'click', () => this._openQr());
 		bind(u.qrClose, 'click', () => this._closeQr());
 		bind(u.qrModal, 'click', (e) => { if (e.target === u.qrModal) this._closeQr(); });
+
+		bind(u.arClose, 'click', () => this._closeArSheet());
+		bind(u.arModal, 'click', (e) => { if (e.target === u.arModal) this._closeArSheet(); });
+		bind(u.arGo, 'click', () => this._onArGo());
+		bind(u.arXr, 'click', () => { this._closeArSheet(); this._toggleXR(); });
+		bind(u.arQr, 'click', () => { this._closeArSheet(); this._openQr(); });
+		bind(u.arPicker, 'click', (e) => {
+			const chip = e.target.closest('[data-ar-id]');
+			if (!chip) return;
+			const next = this.placements.find((pl) => pl.id === chip.dataset.arId);
+			if (next) this._showArTarget(next);
+		});
 
 		bind(u.selbar, 'click', (e) => this._onSelbarClick(e));
 
@@ -462,6 +487,7 @@ export class ArStudio {
 		if (selName) selName.textContent = p.title || 'Model';
 		this.selRing.visible = !this.xrSession;
 		this._positionSelRing();
+		this._warmQuickLook();
 		this._emit('select', { placement: publicPlacement(p, this) });
 	}
 
@@ -677,6 +703,12 @@ export class ArStudio {
 		// Geometry and materials belong to the shared template: other copies still
 		// use them, so only the per-placement shadow above is disposed.
 		if (this.selected === p) this._select(this.placements[this.placements.length - 1] ?? null);
+		releaseQuickLook(this._arCacheKey(p));
+		this._arKeys.delete(this._arCacheKey(p));
+		// The sheet may be listing a model that no longer exists.
+		if (this.ui.arModal && !this.ui.arModal.hidden) {
+			this._showArTarget(this._arTarget === p ? this._arDefaultTarget() : this._arTarget);
+		}
 		this._updateCount();
 		if (persist) this._saveScene();
 		this._emit('remove', { src: p.src, title: p.title });
@@ -1067,6 +1099,7 @@ export class ArStudio {
 	}
 
 	_onTouchEnd() {
+		this._warmQuickLook();
 		const s = pinchEnd(this._pinch);
 		const target = this._twist?.placement;
 		if (s != null) {
@@ -1095,11 +1128,13 @@ export class ArStudio {
 		if (e.key === 'Escape') {
 			if (!this.ui.tray.hidden) this._closeTray();
 			else if (!this.ui.roomModal.hidden) this._closeRoomModal();
+			else if (!this.ui.arModal.hidden) this._closeArSheet();
 			else if (!this.ui.qrModal.hidden) this._closeQr();
 			else this._select(null);
 			return;
 		}
-		if (!this.ui.tray.hidden || !this.ui.qrModal.hidden || !this.ui.roomModal.hidden || this.xrSession) return;
+		if (!this.ui.tray.hidden || !this.ui.qrModal.hidden || !this.ui.arModal.hidden
+			|| !this.ui.roomModal.hidden || this.xrSession) return;
 		const p = this.selected;
 		if (!p) return;
 		const editable = this._isMine(p);
@@ -1450,14 +1485,343 @@ export class ArStudio {
 	 * viewer, which is the only way to get real ARKit / ARCore placement there.
 	 */
 	_enterAR() {
+		// Immersive AR keeps the whole arrangement in the page, so a device that
+		// has it goes straight in: an extra sheet in front of a one-tap experience
+		// is friction, not polish. Everywhere else the hand-off is not instant and
+		// not obvious, and the sheet is what makes it both.
 		if (this.arMode === 'webxr') return this._toggleXR();
-		if (this.arMode === 'none') {
-			this._setStatus('This device has no AR viewer. Open this scene on a phone to place it in a room.', {
-				warn: true, actionLabel: 'Show QR', onAction: () => this._openQr(),
-			});
-			return Promise.resolve();
+		this._openArSheet();
+		return Promise.resolve();
+	}
+
+	// ── The AR hand-off sheet ─────────────────────────────────────────────────
+
+	/**
+	 * Cache identity for one placement's USDZ. The scale is in the key because it
+	 * is baked into the export: someone who pinches a chair to half size and taps
+	 * AR must get the half-size chair, not the cached full-size one.
+	 */
+	_arCacheKey(p) {
+		return `${p.src}|${p.group.scale.x.toFixed(3)}`;
+	}
+
+	/**
+	 * The USDZ bytes for one placement.
+	 *
+	 * Exported from the copy already standing in the scene, so there is no second
+	 * download and Quick Look receives the pose and the size on screen. A model
+	 * the exporter chokes on falls back to a clean conversion of the original
+	 * file rather than failing the tap.
+	 */
+	async _targetUsdz(p) {
+		const { objectToUsdzBlob, glbUrlToUsdzBlob } = await import('./usdz.js');
+		try {
+			return await objectToUsdzBlob(p.group);
+		} catch (err) {
+			log.warn('live-scene USDZ export failed, refetching the source', err);
+			return glbUrlToUsdzBlob(p.src);
 		}
-		return this._placeNative();
+	}
+
+	/**
+	 * A picture of the model the sheet is about to send, rendered from the model
+	 * itself.
+	 *
+	 * A catalogue poster would be easier, but half the ways a model reaches this
+	 * studio (a pasted URL, a generation still warming its thumbnail) have no
+	 * poster at all, and a 200px empty box with a placeholder glyph in it is the
+	 * kind of detail that makes a product feel unfinished. This renders the real
+	 * thing, at the size and in the pose it is standing in the scene, off-screen
+	 * into a render target so the live canvas never flickers.
+	 *
+	 * Best-effort by design: a context loss or a stubbed WebGL implementation
+	 * returns null and the sheet falls back to its glyph.
+	 *
+	 * @param {object} p     The placement to portray
+	 * @param {number} [size] Square edge, in device pixels
+	 * @returns {string|null} a data: URL
+	 */
+	_renderArPreview(p, size = 384) {
+		// An immersive session owns the renderer and its frame buffer; borrowing it
+		// for a thumbnail mid-session is not worth a dropped XR frame.
+		if (this.xrSession) return null;
+		let target = null;
+		try {
+			const model = cloneSkinnedScene(p.group);
+			model.position.set(0, 0, 0);
+			model.rotation.set(0, 0, 0);
+			model.updateMatrixWorld(true);
+
+			const box = new Box3().setFromObject(model);
+			if (box.isEmpty()) return null;
+			const center = box.getCenter(new Vector3());
+			const radius = Math.max(box.getSize(new Vector3()).length() / 2, 0.01);
+
+			const scene = new Scene();
+			scene.add(model);
+			// Lit brighter than the room is: this is a product shot of the model,
+			// not a preview of the scene's lighting, and dark props read as a
+			// silhouette at anything subtler.
+			scene.add(new HemisphereLight(0xffffff, 0x3a3a48, 3.4));
+			const key = new DirectionalLight(0xffffff, 3.6);
+			key.position.set(1.4, 2.2, 1.8);
+			const fill = new DirectionalLight(0xdfe4ff, 1.5);
+			fill.position.set(-1.6, 0.9, -1.2);
+			scene.add(key, fill);
+
+			const fov = 32;
+			const cam = new PerspectiveCamera(fov, 1, radius / 100, radius * 100);
+			// Three-quarter view from slightly above: the angle a product shot uses,
+			// and the one that reads as a solid object rather than a flat card.
+			const dist = (radius / Math.sin((fov * Math.PI) / 360)) * 1.06;
+			cam.position.set(center.x + dist * 0.62, center.y + dist * 0.42, center.z + dist * 0.66);
+			cam.lookAt(center);
+
+			target = new WebGLRenderTarget(size, size, { depthBuffer: true });
+			const prevTarget = this.renderer.getRenderTarget();
+			this.renderer.setRenderTarget(target);
+			this.renderer.clear();
+			this.renderer.render(scene, cam);
+			const pixels = new Uint8Array(size * size * 4);
+			this.renderer.readRenderTargetPixels(target, 0, 0, size, size, pixels);
+			this.renderer.setRenderTarget(prevTarget);
+
+			const canvas = document.createElement('canvas');
+			canvas.width = size;
+			canvas.height = size;
+			const ctx = canvas.getContext('2d');
+			const image = ctx.createImageData(size, size);
+			// WebGL reads bottom-up; a canvas is top-down.
+			const stride = size * 4;
+			for (let row = 0; row < size; row++) {
+				image.data.set(pixels.subarray((size - 1 - row) * stride, (size - row) * stride), row * stride);
+			}
+			ctx.putImageData(image, 0, 0);
+			return canvas.toDataURL('image/png');
+		} catch (err) {
+			log.warn('AR preview render failed', err);
+			return null;
+		} finally {
+			target?.dispose();
+		}
+	}
+
+	/** Which model the AR button would send right now. */
+	_arDefaultTarget() {
+		return this.selected || this.placements[this.placements.length - 1] || null;
+	}
+
+	/**
+	 * Convert the likely AR target ahead of the tap, so the tap is instant.
+	 *
+	 * This is the whole reason Quick Look works here rather than appearing to do
+	 * nothing: Safari opens `rel="ar"` only while the page holds user activation,
+	 * and a conversion started inside the tap handler outlives it. Warming is
+	 * debounced because a pinch changes the cache key on every frame.
+	 */
+	_warmQuickLook() {
+		if (this._destroyed || this.arMode !== 'quicklook') return;
+		clearTimeout(this._arWarmTimer);
+		this._arWarmTimer = setTimeout(() => {
+			if (this._destroyed) return;
+			const target = this._arDefaultTarget();
+			if (!target) return;
+			const key = this._arCacheKey(target);
+			if (isQuickLookReady(key)) return;
+			this._arKeys.add(key);
+			prepareNativeAr(
+				{ src: target.src, title: target.title, key, build: () => this._targetUsdz(target) },
+			).catch((err) => {
+				// A warm-up failure is not the user's problem yet: the sheet retries
+				// the same conversion in front of them, with a real error and a
+				// retry button, if they ever ask for it.
+				log.warn('AR warm-up failed', err);
+			});
+		}, 900);
+	}
+
+	/**
+	 * Open the sheet that hands one model to the device's AR viewer.
+	 * @param {object} [placement] Defaults to the selected model, then the last one.
+	 */
+	_openArSheet(placement) {
+		const u = this.ui;
+		if (!u.arModal) return;
+		this._lastFocus = document.activeElement;
+		u.arModal.hidden = false;
+		this._showArTarget(placement || this._arDefaultTarget());
+		// aria-modal is a promise that focus is inside the dialog.
+		(u.arGo.hidden || u.arGo.disabled ? u.arClose : u.arGo)?.focus?.();
+		this._emit('ar-sheet', { open: true });
+	}
+
+	_closeArSheet() {
+		const { arModal, xrBtn } = this.ui;
+		if (!arModal || arModal.hidden) return;
+		const hadFocus = arModal.contains(document.activeElement);
+		arModal.hidden = true;
+		this._arToken++; // abandon any conversion still in flight for this sheet
+		if (hadFocus) this._restoreFocus(xrBtn);
+		this._emit('ar-sheet', { open: false });
+	}
+
+	_setArStatus(message, { state = '' } = {}) {
+		const node = this.ui.arStatus;
+		if (!node) return;
+		node.textContent = '';
+		node.classList.toggle('is-error', state === 'error');
+		node.classList.toggle('is-ready', state === 'ready');
+		if (!message) return;
+		if (state === 'busy') node.appendChild(el('span', { class: 'ars-spinner', 'aria-hidden': 'true' }));
+		node.appendChild(el('span', { text: message }));
+	}
+
+	/** Render the sheet for one target and start preparing it. */
+	_showArTarget(target) {
+		const u = this.ui;
+		if (!u.arModal || u.arModal.hidden) return;
+		this._arToken++;
+		this._arHandoff = null;
+		this._arTarget = target || null;
+
+		const goLabel = u.arGo.querySelector('.ars-ar-go-label');
+		this._arRetry = null;
+		u.arXr.hidden = this.arMode !== 'webxr';
+		u.arQr.hidden = true;
+		u.arPicker.hidden = true;
+		u.arPicker.textContent = '';
+
+		if (!target) {
+			u.arThumb.textContent = '🪄';
+			u.arName.textContent = 'Nothing to place yet';
+			u.arHint.textContent = 'Add a model to the scene and it can stand on your real floor at its real size.';
+			this._setArStatus(null);
+			u.arGo.hidden = false;
+			u.arGo.disabled = false;
+			u.arGo.removeAttribute('aria-busy');
+			if (goLabel) goLabel.textContent = 'Browse models';
+			// The hexagon means "place this"; there is nothing to place yet.
+			u.arGo.querySelector('.ars-ar-go-icon').hidden = true;
+			return;
+		}
+
+		u.arThumb.textContent = '◆';
+		const preview = this._renderArPreview(target) || target.poster;
+		if (preview) {
+			const img = el('img', { src: preview, alt: '' });
+			// A poster that 404s would leave a broken-image glyph in the sheet.
+			img.addEventListener('error', () => { u.arThumb.textContent = '◆'; }, { once: true });
+			u.arThumb.textContent = '';
+			u.arThumb.appendChild(img);
+		}
+		u.arName.textContent = target.title || 'Model';
+
+		if (this.placements.length > 1) {
+			u.arPicker.hidden = false;
+			for (const p of this.placements) {
+				u.arPicker.appendChild(el('button', {
+					type: 'button', class: 'ars-ar-chip', 'data-ar-id': p.id,
+					'aria-pressed': p === target ? 'true' : 'false',
+					text: p.title || 'Model',
+				}));
+			}
+		}
+
+		if (this.arMode === 'none') {
+			u.arHint.textContent = 'AR needs a phone. Open this scene on your iPhone or Android and the model stands on your real floor.';
+			this._setArStatus(null);
+			u.arGo.hidden = true;
+			u.arQr.hidden = false;
+			return;
+		}
+
+		u.arHint.textContent = 'Point your device at a flat surface, then drag to place it. It arrives at real size.';
+		u.arGo.hidden = false;
+		u.arGo.querySelector('.ars-ar-go-icon').hidden = false;
+		if (goLabel) goLabel.textContent = 'Place in your space';
+		this._prepareArTarget(target);
+	}
+
+	/**
+	 * Get the hand-off ready before the person taps for it.
+	 *
+	 * Scene Viewer needs nothing prepared, so it enables straight away. Quick
+	 * Look needs a USDZ, which is why the button says so while it converts
+	 * instead of sitting there looking broken for two seconds.
+	 */
+	async _prepareArTarget(target) {
+		const u = this.ui;
+		const token = this._arToken;
+		const key = this._arCacheKey(target);
+		const warm = this.arMode !== 'quicklook' || isQuickLookReady(key);
+
+		if (!warm) {
+			u.arGo.disabled = true;
+			u.arGo.setAttribute('aria-busy', 'true');
+			this._setArStatus('Preparing it for AR…', { state: 'busy' });
+		}
+		this._arKeys.add(key);
+		try {
+			const handoff = await prepareNativeAr({
+				src: target.src, title: target.title, key, build: () => this._targetUsdz(target),
+			}, { fallbackUrl: this.config.shareBaseUrl });
+			if (token !== this._arToken || this._destroyed) return;
+			this._arHandoff = handoff;
+			u.arGo.disabled = false;
+			u.arGo.removeAttribute('aria-busy');
+			this._setArStatus(warm ? null : 'Ready.', { state: 'ready' });
+			// Put the thumb back on the button that is now armed, but never steal
+			// focus from a control the person moved to while they waited.
+			const idle = document.activeElement === document.body || document.activeElement === u.arModal;
+			if (!warm && idle) u.arGo.focus?.();
+		} catch (err) {
+			if (token !== this._arToken || this._destroyed) return;
+			log.warn('AR preparation failed', err);
+			u.arGo.disabled = true;
+			u.arGo.removeAttribute('aria-busy');
+			this._setArStatus(`Could not prepare this model for AR (${err?.message || err}).`, { state: 'error' });
+			// The primary button stays the primary action: it just becomes the
+			// retry, rather than leaving a dead button and a second one to hunt for.
+			this._arRetry = target;
+			u.arGo.disabled = false;
+			u.arGo.querySelector('.ars-ar-go-label').textContent = 'Try again';
+			u.arGo.querySelector('.ars-ar-go-icon').hidden = true;
+			this._emit('native-ar-error', { error: err, src: target.src });
+		}
+	}
+
+	/**
+	 * The tap that opens AR.
+	 *
+	 * Everything expensive already happened, so this is deliberately synchronous
+	 * from the click through to the anchor activation: put an `await` in front of
+	 * `open()` and iOS drops the user gesture and silently refuses to open Quick
+	 * Look.
+	 */
+	_onArGo() {
+		if (!this._arTarget) {
+			this._closeArSheet();
+			this._openTray();
+			return;
+		}
+		if (this._arRetry) {
+			this._showArTarget(this._arRetry);
+			return;
+		}
+		const handoff = this._arHandoff;
+		if (!handoff) return;
+		const { src, title } = this._arTarget;
+		try {
+			handoff.open();
+		} catch (err) {
+			log.warn('native AR failed to open', err);
+			this._setArStatus(`Could not open AR (${err?.message || err}).`, { state: 'error' });
+			this._emit('native-ar-error', { error: err, src });
+			return;
+		}
+		this._emit('native-ar', { src, title, viewer: handoff.viewer });
+		this._closeArSheet();
+		this._setStatus('Point at the floor, then drag to place it.');
 	}
 
 	/**
@@ -1478,6 +1842,7 @@ export class ArStudio {
 		const btn = this.ui.xrBtn;
 		btn?.setAttribute('aria-busy', 'true');
 
+		this._arKeys.add(this._arCacheKey(target));
 		const STAGES = {
 			download: 'Fetching the model…',
 			parse: 'Reading the model…',
@@ -1487,7 +1852,12 @@ export class ArStudio {
 		this._setStatus(STAGES.download, { sticky: true });
 		try {
 			const opened = await placeInYourSpace(
-				{ src: target.src, title: target.title },
+				{
+					src: target.src,
+					title: target.title,
+					key: this._arCacheKey(target),
+					build: () => this._targetUsdz(target),
+				},
 				{
 					onProgress: (stage) => this._setStatus(STAGES[stage] || 'Preparing AR…', { sticky: true }),
 					fallbackUrl: this.config.shareBaseUrl,
@@ -2187,6 +2557,16 @@ export class ArStudio {
 	 */
 	placeInYourSpace(placement) { return this._placeNative(placement); }
 
+	/**
+	 * Open the AR hand-off sheet: the screen that prepares one model and then
+	 * opens the device's own AR viewer from a single tap.
+	 * @param {object} [placement] Defaults to the selected model, then the last one.
+	 */
+	openArSheet(placement) { this._openArSheet(placement); }
+
+	/** Close the AR hand-off sheet. */
+	closeArSheet() { this._closeArSheet(); }
+
 	/** Open a shared room (a new one when `code` is omitted). Returns the code. */
 	async openRoom(code) {
 		if (code) await this._joinRoom(code);
@@ -2207,6 +2587,11 @@ export class ArStudio {
 		this.net?.destroy();
 		if (this._roomHeartbeat) clearInterval(this._roomHeartbeat);
 		clearTimeout(this._statusTimer);
+		clearTimeout(this._arWarmTimer);
+		// Only this studio's own conversions: a second studio on the page may be
+		// sharing the cache and still needs its entries.
+		for (const key of this._arKeys) releaseQuickLook(key);
+		this._arKeys.clear();
 		clearInterval(this._lightTimer);
 		document.removeEventListener('keydown', this._onKeyDown);
 		window.removeEventListener('deviceorientationabsolute', this._onOrientationAbsolute, true);

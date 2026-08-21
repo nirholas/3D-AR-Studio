@@ -8,12 +8,12 @@
 		"url": "https://github.com/nirholas/3D-AR-Studio",
 		"source": "github"
 	},
-	"version": "0.1.1",
+	"version": "0.3.0",
 	"packages": [
 		{
 			"registryType": "npm",
 			"identifier": "3d-ar-studio-mcp",
-			"version": "0.1.1",
+			"version": "0.3.0",
 			"runtimeHint": "npx",
 			"transport": {
 				"type": "stdio"

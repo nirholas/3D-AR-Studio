@@ -24,7 +24,8 @@
 import {
 	BufferAttribute, Color, DoubleSide, Mesh, MeshStandardMaterial, Vector3,
 } from 'three';
-import { sharedGLTFLoader } from './loaders.js';
+import { clone as cloneSkinnedScene } from 'three/addons/utils/SkeletonUtils.js';
+import { sharedGLTFLoaderReady } from './loaders.js';
 
 /**
  * CPU-skin one SkinnedMesh at its current pose, returning deformed positions in
@@ -119,17 +120,61 @@ export function ensureNormals(scene) {
  * scene you are done with.
  *
  * @param {import('three').Object3D} scene
+ * @param {object} [options] Passed through to three's USDZExporter.
  * @returns {Promise<Blob>} model/vnd.usdz+zip
  */
-export async function sceneToUsdzBlob(scene) {
+export async function sceneToUsdzBlob(scene, options = {}) {
 	bakeSkinnedMeshes(scene);
 	coerceMaterialsToStandard(scene);
 	ensureNormals(scene);
 	// Loaded on demand: nobody who never taps "Place in your space" should pay
 	// for the exporter.
 	const { USDZExporter } = await import('three/addons/exporters/USDZExporter.js');
-	const bytes = await new USDZExporter().parseAsync(scene);
+	const bytes = await new USDZExporter().parseAsync(scene, {
+		// Quick Look is the only thing that ever reads these bytes, and it applies
+		// texture repeat and offset in a different order to every other USD
+		// renderer (Apple FB10036297). This flag pre-compensates, so a model with
+		// tiled textures does not arrive in someone's room with the tiling
+		// visibly wrong. It is a no-op on the untiled default.
+		quickLookCompatible: true,
+		// The default plane anchoring: the model rests on the horizontal surface
+		// the person points at, which is what "place it on your floor" means.
+		includeAnchoringProperties: true,
+		...options,
+	});
 	return new Blob([bytes], { type: 'model/vnd.usdz+zip' });
+}
+
+/**
+ * Convert an object that is ALREADY in a live scene to USDZ, without touching
+ * the network.
+ *
+ * This is the fast path, and on a phone the difference is the whole feature.
+ * Re-fetching and re-parsing the GLB costs seconds and a second CORS round trip
+ * on a file the page has already decoded; worse, it exports the model's rest
+ * pose at its authored size. Cloning the live object exports what the person is
+ * actually looking at: the current animation pose, and the size they pinched it
+ * to, which is the size Quick Look will stand in their room.
+ *
+ * The clone is what gets baked and mutated, so the live scene is untouched.
+ * Position and yaw are zeroed because the AR viewer re-anchors the model to the
+ * surface the user picks; carrying the studio's floor coordinates through would
+ * only offset it from their own reticle. World scale is preserved: it is the
+ * real-world size.
+ *
+ * @param {import('three').Object3D} object
+ * @returns {Promise<Blob>} model/vnd.usdz+zip
+ */
+export async function objectToUsdzBlob(object) {
+	object.updateMatrixWorld(true);
+	// SkeletonUtils.clone rebinds skinned meshes to the cloned bones and copies
+	// their current transforms, so the pose survives; Object3D.clone does not.
+	const copy = cloneSkinnedScene(object);
+	copy.position.set(0, 0, 0);
+	copy.rotation.set(0, 0, 0);
+	copy.scale.copy(object.getWorldScale(new Vector3()));
+	copy.updateMatrixWorld(true);
+	return sceneToUsdzBlob(copy);
 }
 
 /**
@@ -146,7 +191,9 @@ export async function glbUrlToUsdzBlob(glbUrl, { signal, onProgress } = {}) {
 	const buffer = await res.arrayBuffer();
 
 	onProgress?.('parse');
-	const loader = sharedGLTFLoader();
+	// Awaited rather than taken synchronously: a meshopt-compressed GLB handed to
+	// a loader whose decoder is still downloading fails on a valid file.
+	const loader = await sharedGLTFLoaderReady();
 	const gltf = await new Promise((resolve, reject) => {
 		loader.parse(buffer, '', resolve, reject);
 	});

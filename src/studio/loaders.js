@@ -49,6 +49,24 @@ export function sharedGLTFLoader() {
 	return _loader;
 }
 
+/**
+ * The shared loader, once every optional decoder that can attach has attached.
+ *
+ * `sharedGLTFLoader()` returns before meshopt resolves, which is right for the
+ * queue (a plain GLB should not wait on a WASM download it will never use) and
+ * wrong for a one-shot parse: hand a meshopt-compressed GLB to a loader whose
+ * decoder is still in flight and it throws "no DRACOLoader instance provided"'s
+ * meshopt equivalent on a file that is perfectly valid. Anything that parses a
+ * single caller-supplied GLB should await this instead.
+ *
+ * @returns {Promise<GLTFLoader>}
+ */
+export async function sharedGLTFLoaderReady() {
+	const loader = sharedGLTFLoader();
+	await meshoptDecoder();
+	return loader;
+}
+
 /** Drop the cached loader (tests, or after changing the Draco path mid-session). */
 export function resetLoader() {
 	_loader = null;
