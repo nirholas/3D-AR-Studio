@@ -475,3 +475,7 @@ The bundle includes [three.js](https://threejs.org) (MIT) and
 [colyseus.js](https://colyseus.io) (MIT). The default model library is CC0 content from
 [Poly Haven](https://polyhaven.com), and the default generation and animation lanes are hosted
 by [three.ws](https://three.ws). None of them is required: every one is a URL you can change.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=nirholas/3D-AR-Studio&type=Date)](https://www.star-history.com/#nirholas/3D-AR-Studio&Date)
