@@ -1,5 +1,10 @@
 # 3D AR Studio
 
+<!-- three.ws:badges -->
+[![GitHub stars](https://img.shields.io/github/stars/nirholas/3D-AR-Studio?style=flat&logo=github)](https://github.com/nirholas/3D-AR-Studio/stargazers) [![License](https://img.shields.io/github/license/nirholas/3D-AR-Studio?style=flat)](https://github.com/nirholas/3D-AR-Studio/blob/HEAD/LICENSE) [![Last commit](https://img.shields.io/github/last-commit/nirholas/3D-AR-Studio?style=flat)](https://github.com/nirholas/3D-AR-Studio/commits) [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=flat)](https://github.com/nirholas/3D-AR-Studio/pulls) [![AI agent friendly](https://img.shields.io/badge/AI%20agents-AGENTS.md%20%2B%20llms.txt-6d5dfc?style=flat)](https://github.com/nirholas/3D-AR-Studio/blob/HEAD/AGENTS.md)
+<!-- /three.ws:badges -->
+
+
 **Drop a full augmented-reality studio into any web page.**
 
 Place as many 3D models as you like in your real room through the camera, describe a new one
@@ -479,3 +484,26 @@ by [three.ws](https://three.ws). None of them is required: every one is a URL yo
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=nirholas/3D-AR-Studio&type=Date)](https://www.star-history.com/#nirholas/3D-AR-Studio&Date)
+
+<!-- three.ws:growth -->
+## Support the project
+
+If 3D-AR-Studio saves you time, **[star it on GitHub](https://github.com/nirholas/3D-AR-Studio)**. Stars are how other developers and AI agents find the repositories worth trusting, and they cost you one click.
+
+Know someone who would use it? [Post on X](https://twitter.com/intent/tweet?text=3D-AR-Studio%3A%20Drop%20a%20full%20augmented-reality%20studio%20into%20any%20web%20page&url=https%3A%2F%2Fgithub.com%2Fnirholas%2F3D-AR-Studio) · [Share on Bluesky](https://bsky.app/intent/compose?text=3D-AR-Studio%3A%20Drop%20a%20full%20augmented-reality%20studio%20into%20any%20web%20page%20https%3A%2F%2Fgithub.com%2Fnirholas%2F3D-AR-Studio) · [Share on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2Fnirholas%2F3D-AR-Studio) · [Submit to Hacker News](https://news.ycombinator.com/submitlink?u=https%3A%2F%2Fgithub.com%2Fnirholas%2F3D-AR-Studio&t=3D-AR-Studio%3A%20Drop%20a%20full%20augmented-reality%20studio%20into%20any%20web%20page) · [Share on Reddit](https://www.reddit.com/submit?url=https%3A%2F%2Fgithub.com%2Fnirholas%2F3D-AR-Studio&title=3D-AR-Studio%3A%20Drop%20a%20full%20augmented-reality%20studio%20into%20any%20web%20page)
+
+## Built for AI agents too
+
+Coding agents and LLM tooling can read this repo directly: [AGENTS.md](./AGENTS.md), [llms.txt](./llms.txt), [llms-full.txt](./llms-full.txt). Point an agent at `https://github.com/nirholas/3D-AR-Studio` and it has the context it needs.
+
+## More from the same author
+
+- [All repositories by nirholas](https://github.com/nirholas/nirholas#readme): the full catalog, grouped by topic
+- [three.ws](https://three.ws): the platform for 3D AI agents with Solana wallets, a skill marketplace and x402 payments
+- Questions or ideas: [open an issue](https://github.com/nirholas/3D-AR-Studio/issues) or [start a discussion](https://github.com/nirholas/3D-AR-Studio/discussions)
+
+## Contributors
+
+[![Contributors](https://contrib.rocks/image?repo=nirholas/3D-AR-Studio)](https://github.com/nirholas/3D-AR-Studio/graphs/contributors)
+
+<!-- /three.ws:growth -->
