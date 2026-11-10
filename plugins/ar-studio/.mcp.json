@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "ar-studio": {
+      "command": "npx",
+      "args": ["-y", "3d-ar-studio-mcp"]
+    }
+  }
+}
